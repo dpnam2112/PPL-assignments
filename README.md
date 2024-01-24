@@ -21,7 +21,17 @@ The implementation process is divided into 4 phases associated to 4 assignments:
 
 This repository is used to store assignment details and my solution of each assignment.
 
-## How to test
-    `cd src`
+## Requirements
 
-    `make test`
+## How to run
+
+### On Linux/Unix
+    source ./init.sh
+
+### On Windows
+
+## How to test
+    cd src
+    make test
+
+I haven't built the CLI for this compiler yet, but I will do it soon! :)
