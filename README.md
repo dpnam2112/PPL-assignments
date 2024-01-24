@@ -7,7 +7,7 @@ In Ho Chi Minh University of Technology, we computer science students have a req
 language design and implementations. In this course, we are required to write a simple compiler for
 a simple, JVM-based programming language named 'Zcode'.
 
-The implementation process is divided into 4 phases associated to 4 assignments:
+The implementation process is divided into 4 phases corresponding to to 4 assignments:
 
  - Scanning, Parsing: In this phase, we are required to write a parser to check if syntax of the
    input program is valid.
