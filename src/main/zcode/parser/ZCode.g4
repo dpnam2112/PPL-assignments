@@ -14,10 +14,13 @@ options {
 	language=Python3;
 }
 
-program: (funcDecl | NEWLINE | COMMENT_NL | COMMENT_EOF)* EOF;
+program: (funcDecl | COMMENT_EOF | nlList)* EOF;
+
+// newline list
+nlList: NEWLINE+ ;
 
 stmtList
-    : (stmt | NEWLINE | COMMENT_NL)+ ;
+    : (stmt | nlList)+ ;
 
 stmt
     : callStmt
@@ -36,11 +39,11 @@ returnStmt : RETURN expr? NEWLINE ;
 
 arrayDim : '[' NUM_LIT (',' NUM_LIT)* ']' ;
 
-index : '[' expr (',' expr)* ']' ;
+index : '[' exprList ']' ;
 
 assignmentStmt : ID index? ASSIGN expr NEWLINE ;
 
-forStmt : 'for' ID 'until' expr 'by' expr NEWLINE stmt ;
+forStmt : 'for' ID 'until' expr 'by' expr nlList? stmt ;
 
 variableDecl 
     : (BOOL | STRING | NUMBER) ID arrayDim? (ASSIGN expr)? NEWLINE
@@ -49,24 +52,26 @@ variableDecl
 
 // Function declaration
 funcDecl 
-: 'func' ID '(' funcParamDecl? ')'
-    ( blockStmt | returnStmt | NEWLINE (blockStmt | returnStmt) | NEWLINE) ;
+: 'func' ID '(' paramListDecl? ')'
+    ( blockStmt | returnStmt | NEWLINE+ (blockStmt | returnStmt)?);
 
-funcParamDecl
-    : funcSingleParamDecl (',' funcSingleParamDecl)* ;
+paramListDecl
+    : paramDecl (',' paramDecl)* ;
 
-funcSingleParamDecl
+paramDecl
     : (BOOL | NUMBER | STRING) ID arrayDim? ;
 
 ifStmt 
-    :   'if' expr stmt
-        ('elif' expr stmt)*?
-        ('else'stmt)?;
+    :   'if' '(' expr ')' nlList? stmt (nlList? elsePart)? ;
+
+elsePart
+    : 'else' nlList? stmt
+    | 'elif' '(' expr ')' nlList? stmt (nlList? elsePart)? ;
 
 loopCtrlStmt : (BREAK | CONTINUE) NEWLINE ;
 
 blockStmt :
-BEGIN
+BEGIN NEWLINE
     stmtList?
 END NEWLINE;
 
@@ -86,11 +91,15 @@ exprList
 functionCall: ID '(' exprList? ')' ;
 
 array
-     : '[' exprList? ']' ;
+	: '[' exprList? ']' ;
+
+literalList
+     : (NUM_LIT | STR_LIT | TRUE | FALSE | array) (',' (NUM_LIT | STR_LIT | TRUE | FALSE | array))*
+     ;
 
 indexExpr
     : primary
-    | indexExpr '[' expr (',' expr)* ']' ;
+    | indexExpr '[' exprList ']' ;
 
 signExpr
     : indexExpr
@@ -108,17 +117,17 @@ additionExpr
     : termExpr
     | additionExpr (PLUS | MINUS) termExpr ;
 
-relationalExpr
+boolExpr
     : additionExpr
-    | additionExpr (EQ | NOT_EQ | GT | LT | GT_EQ | LT_EQ | EQ_EQ) additionExpr ;
+    | boolExpr (AND | OR) additionExpr ;
 
-booleanExpr
-    : relationalExpr
-    | booleanExpr (AND | OR) relationalExpr ;
+relationalExpr
+    : boolExpr
+    | boolExpr (EQ | NOT_EQ | GT | LT | GT_EQ | LT_EQ | EQ_EQ) boolExpr ;
 
 expr
-    : booleanExpr
-    | booleanExpr TRIP_DOT booleanExpr ;
+    : relationalExpr
+    | relationalExpr TRIP_DOT relationalExpr ;
  
 // Single character tokens
 
@@ -170,7 +179,12 @@ STRING: 'string' ;
 FOR: 'for' ;
 BY: 'by' ;
 
-NEWLINE: '\r'? '\n' ;
+fragment
+NEWLINE_CHAR: '\r'? '\n' ;
+
+NEWLINE
+ : '##'(~[\n])*? ('\r'? '\n') {self.text = self.text[-1] }
+ | ('\r'? '\n') ;
 
 fragment
 DIGIT: [0-9] ;
@@ -186,20 +200,21 @@ DECIMAL_PART :  '.' DIGITS? ;
 
 NUM_LIT : DIGITS DECIMAL_PART? SCI_NOTATION? ;
 
-COMMENT_NL : '##' .*? NEWLINE ;
+COMMENT_EOF : '##' (~[\n])*? EOF -> skip ;
 
-COMMENT_EOF : '##' (~[\n])*? EOF ;
+fragment
+ESCAPE_SEQ: '\\' [\\frtnb'] | '\'"' ;
 
 STR_LIT 
-	: '"' ('\\' [\\frtnb'] | '\'"' | ~['\r\n\\"] )*? '"' 
-    { self.text = self.text[1:-1] };   // literal string
+	: '"' (ESCAPE_SEQ | ~[\r\n\\"] )*? '"' 
+    { self.text = self.text[1:-1] };
 
 INVALID_ESC 
-	: '"' ('\\' [\\frtnb'] | '\'"' | ~['\r\n\\"] )* ('\\' ~[\\frtnb'] | '\'' ~["] | '\\' EOF) 
+	: '"' (ESCAPE_SEQ | ~[\r\n\\"])* ('\\' ~[\\frtnb'] | '\\' EOF) 
 { 
-content = self.text[1:] if self.text[-1] != '"' else self.text[1:-1]
+content = self.text[1:]
 raise IllegalEscape(content)
-};   // literal string
+};
 
 UNCLOSED_STR : '"' ('\\' [\\frtnb'] | '\'"' | ~['"\\])*? ('\n' | EOF) {
 content = self.text

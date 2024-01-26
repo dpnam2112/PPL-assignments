@@ -1,5 +1,7 @@
+.PHONY: build test clean
 
-.PHONY: test clean
+build:
+	python3 run.py gen
 
 test:
 	python3 run.py test LexerSuite

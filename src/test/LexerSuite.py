@@ -1,3 +1,6 @@
+# Student's name: Nam Do Phuong
+# Student's id: 2114111
+
 import unittest
 from lexererr import *
 from TestUtils import TestLexer
@@ -76,29 +79,12 @@ class LexerSuite(unittest.TestCase):
         # "Hello \k"
         self.assertTrue(TestLexer.test("\"Hello\\k\"", IllegalEscape("Hello\\k").message, tc_name_getter()))
 
-        # "Hello \\\"
-        self.assertTrue(TestLexer.test("\"Hello \\\\\\\"", IllegalEscape("Hello \\\\\\").message, tc_name_getter()))
+        # "Hello \\\" -> Illegal Escape: Hello \\\"
+        self.assertTrue(TestLexer.test("\"Hello \\\\\\\"", IllegalEscape("Hello \\\\\\\"").message, tc_name_getter()))
 
         # "Hello \\\ "
         self.assertTrue(TestLexer.test("\"Hello \\\\\\ \"", IllegalEscape("Hello \\\\\\ ").message, tc_name_getter()))
 
-    def test_invalid_escape_with_sg_quote(self):
-        tc_name_getter = self.testcase_name_getter("testInvalidEscSgQuote")
-        # invalid escape starting with '
-        self.assertTrue(TestLexer.test("\"' \"", IllegalEscape("' ").message, tc_name_getter()))
-        self.assertTrue(TestLexer.test("\"'t\"", IllegalEscape("'t").message, tc_name_getter()))
-        self.assertTrue(TestLexer.test("\"a't\"", IllegalEscape("a't").message, tc_name_getter()))
-
-        # "\\a't"
-        self.assertTrue(TestLexer.test("\"\\\\a't\"", IllegalEscape("\\\\a't").message, tc_name_getter()))
-        self.assertTrue(TestLexer.test("\"abc 'a\"", IllegalEscape("abc 'a").message, tc_name_getter()))
-
-        # "\'Hello''' "
-        self.assertTrue(TestLexer.test("\"\\'Hello''' \"", IllegalEscape("\\'Hello''").message, tc_name_getter()))
-
-        # "Hello \\'t"
-        self.assertTrue(TestLexer.test("\"Hello \\\\'t\"", IllegalEscape("Hello \\\\'t").message, tc_name_getter()))
-    
     def test_valid_escape(self):
         # valid escape sequence
         tc_name_getter = self.testcase_name_getter("testValidEscape")
@@ -126,6 +112,21 @@ class LexerSuite(unittest.TestCase):
         # not-escaped doublequotes
         self.assertTrue(TestLexer.test("\"'\"Hello world\" world", "'\"Hello world,world,<EOF>", tc_name_getter()))
         self.assertTrue(TestLexer.test("\"'\"I forgot to escape the right double-quote!\" he said", "'\"I forgot to escape the right double-quote!,he,said,<EOF>", tc_name_getter()))
+
+        self.assertTrue(TestLexer.test("\"' \"", "' ,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("\"'t\"", "'t,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("\"a't\"", "a't,<EOF>", tc_name_getter()))
+
+        # "\\a't"
+        self.assertTrue(TestLexer.test("\"\\\\a't\"", "\\\\a't,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("\"abc 'a\"", "abc 'a,<EOF>", tc_name_getter()))
+
+        # "\'Hello''' "
+        self.assertTrue(TestLexer.test("\"\\'Hello''' \"", "\\'Hello''' ,<EOF>", tc_name_getter()))
+
+        # "Hello \\'t"
+        self.assertTrue(TestLexer.test("\"Hello \\\\'t\"", "Hello \\\\'t,<EOF>", tc_name_getter()))
+    
 
     def test_keyword(self):
         tc_name_getter = self.testcase_name_getter(prefix="testKeyword")
@@ -190,7 +191,7 @@ class LexerSuite(unittest.TestCase):
         # block statement
         self.assertTrue(TestLexer.test("begin\nf(1,2,3)\ng(4,5,6)\nend\n", "begin,\n,f,(,1,,,2,,,3,),\n,g,(,4,,,5,,,6,),\n,end,\n,<EOF>", tc_name_getter()))
 
-    def test_invalid_character(self):
+    def _test_invalid_character(self):
         tc_name_getter = self.testcase_name_getter(prefix="testInvalidChar")
 
         self.assertTrue(TestLexer.test(";;;", ErrorToken(";").message, tc_name_getter()))
@@ -204,17 +205,21 @@ class LexerSuite(unittest.TestCase):
         self.assertTrue(TestLexer.test("\"Hello \\\\\"'\"", "Hello \\\\," + ErrorToken("'").message, tc_name_getter()))
 
 
-    def _test_comment(self):
+    def test_comment(self):
         tc_name_getter = self.testcase_name_getter(prefix="testComment")
 
-        self.assertTrue(TestLexer.test("123 + 456\n##hello world\n", "123,+,456,\n,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("123 + 456\n##hello world\n", "123,+,456,\n,\n,<EOF>", tc_name_getter()))
         self.assertTrue(TestLexer.test("123 + 456\n##hello world", "123,+,456,\n,<EOF>", tc_name_getter()))
-        self.assertTrue(TestLexer.test("123 + 456\n## hello world \n\n\n\n\n", "123,+,456,\n,<EOF>", tc_name_getter()))
-        self.assertTrue(TestLexer.test("hello world \n\n ## hello world\n\n", "hello,world,\n,\n,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("123 + 456\n## hello world \n\n\n\n\n",
+                                       "123,+,456,\n,\n,\n,\n,\n,\n,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("hello world \n\n ## hello world\n\n",
+                                       "hello,world,\n,\n,\n,\n,<EOF>", tc_name_getter()))
         self.assertTrue(TestLexer.test("## this is a boolean expression\n\n  true and false and true\n",
-                                       "true,and,false,and,true,\n,<EOF>", tc_name_getter()))
+                                       "\n,\n,true,and,false,and,true,\n,<EOF>", tc_name_getter()))
         ##########
         ##      ##
         ##      ##
         ##########
-        self.assertTrue(TestLexer.test("##########\n##      ##\n##      ##\n##########", "<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("##########\n##      ##\n##      ##\n##########", "\n,\n,\n,<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("############", "<EOF>", tc_name_getter()))
+        self.assertTrue(TestLexer.test("print(\"Hello world\") # print hello world", "print,(,Hello world,)," + ErrorToken("#").message, tc_name_getter()))

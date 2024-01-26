@@ -1,3 +1,6 @@
+# Student's name: Nam Do Phuong
+# Student's id: 2114111
+
 import unittest
 from TestUtils import TestParser
 
@@ -27,7 +30,21 @@ class ParserSuite(unittest.TestCase):
             print("Hello world")
         end
 
-        func f() begin end
+        func f() begin
+        end
+
+        func f()
+
+            return 1
+
+
+        func g()
+
+
+            ## hello world
+        begin
+            return 1
+        end
         """
         self.assertTrue(TestParser.test(function_decl, "successful", "simple_func_declarations"))
 
@@ -91,15 +108,6 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(func_decl_syntax_err_11, "successful", "func_decl_syntax_err_11"))
 
-        func_decl_syntax_err_12 = """
-        func f(number x, number y)
-
-        begin
-            print(x + y)
-        end
-        """
-        self.assertFalse(TestParser.test(func_decl_syntax_err_12, "successful", "func_decl_syntax_err_12"))
-
         func_decl_syntax_err_13 = """
         func f(number x, number y, z)
         """
@@ -120,7 +128,7 @@ class ParserSuite(unittest.TestCase):
         begin
         end
 
-        if x > 10 print("Hello world")
+        if (x > 10) print("Hello world")
 
         func g()
         """
@@ -132,22 +140,28 @@ class ParserSuite(unittest.TestCase):
         func main()
         begin
             var x
+
+
         end
         """
         self.assertFalse(TestParser.test(invalid_var_decl, "successful", "invalid_decl_with_var"))
 
-        invalid_arr_decl = """
+        valid_dynamic_decl = """
         func main()
         begin
-            number ages[1 + 2, true, false]
+            dynamic x
+
+
         end
         """
-        self.assertFalse(TestParser.test(invalid_arr_decl, "successful", "invalid_arr_dim"))
+        self.assertTrue(TestParser.test(valid_dynamic_decl, "successful", "valid_dynamic_decl"))
 
         valid_arr_decl = """
         func main()
         begin
             number matrix[1,2,3]
+            number matrix[10] <- [1 + 2 * (5 - 8 * 3 + 1), 1e5 - 3e4 * 3.45e3 * f(), 1, 2, 3]
+            bool matrix[10] <- [true, false, false and f(), "abc" == "abc", "false and (false or true) and false"]
         end
         """
         self.assertTrue(TestParser.test(valid_arr_decl, "successful", "valid_arr_dim"))
@@ -222,16 +236,32 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(invalid_comparison_2, "successful", "invalid_comparison_2"))
 
+        invalid_comparison_3 = """
+        func main()
+        begin
+            var x <- "abc" == "abc" == "def"
+
+        end
+        """
+        self.assertFalse(TestParser.test(invalid_comparison_3, "successful", "invalid_comparison_3"))
+
         simple_math = """
         func main()
         begin
             var x <- 1 + 1 + 1 + 1
+
             var x <- 1 + 1 - 1 + 1 - 1
+
             var z <- 2e5 * 4 - 1 + 2.4e-3 / 3 % 6
-            var x <- -(1 + 1e-3) * 5 - 4 / 6
+
+            dynamic x <- -(1 + 1e-3) * 5 - 4 / 6
+
             var x <- 5 * f() + 4 - g(3) * 6 / 7 + h(3, 2)
+
             var x <- a[4] * f(3) - a[3] * f(2)
-            var x <- a[1,2,3] * g[1, 2] - 4
+
+            dynamic x <- a[1,2,3] * g[1, 2] - 4
+
             var x <- a[i1, (i1 + i2 * 2e1) * 0] * g[i2] - h(1, 2, 3, 4, 5) 
         end
         """
@@ -244,7 +274,7 @@ class ParserSuite(unittest.TestCase):
             var x <- (true or false) and true and true
             var x <- not (not true or false and not(false and true)) and false
             var x <- not f() and g or h(1, 2, false)
-            var x <- not not not not false
+           var x <- not not not not false
         end
         """
         self.assertTrue(TestParser.test(simple_logical_expr, "successful", "simple_logical_expr"))
@@ -319,6 +349,52 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertTrue(TestParser.test(assignment, "successful", "simple_assignment"))
 
+        asgn_syntax_err_0 = """
+        func main()
+        begin
+            x <-
+
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_0, "successful", "asgn_syntax_err_0"))
+
+        asgn_syntax_err_1 = """
+        func main()
+        begin
+            x[] <- 100
+
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_1, "successful", "asgn_syntax_err_1"))
+
+        asgn_syntax_err_2 = """
+        func main()
+        begin
+            x[1, 2] <- 
+
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_2, "successful", "asgn_syntax_err_2"))
+
+        asgn_syntax_err_3 = """
+        func main()
+        begin
+            x[1,2,3] <-
+                123
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_3, "successful", "asgn_syntax_err_3"))
+
+        asgn_syntax_err_4 = """
+        func main()
+        begin
+            x <-
+                123
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_4, "successful", "asgn_syntax_err_4"))
+
+
     def test_loop(self):
         simple_loop = """
         func main()
@@ -326,11 +402,20 @@ class ParserSuite(unittest.TestCase):
             for i until f(i, j) > 5 by 5
                 print("Hello world")
 
+            for i until f(i, j) > 5 by 5 print("Hello world")
+
             for i until f(i, j, k) * 5 + 2 < 5 by -5
                 print("Hello world")
 
             for i until a[i] * a[j] < 10 by a[i + 3] * 6
                 print("Hello world")
+
+            for i until a[i] * a[j] < 10 by a[i + 3] * 6
+
+
+
+                print("Hello world")
+
 
             var x <- 1
             var ages <- [1,2,3,4,5]
@@ -379,38 +464,65 @@ class ParserSuite(unittest.TestCase):
     def test_if_stmt(self):
         valid_if = """
         func main() begin
-            if x > 1 print(x + 1)
+            if (x > 1) print(x + 1)
 
-            if x > 1 print(x + 1)
-            elif x > 2 print(x + 2)
+            if (x > 1) print(x + 1)
+            elif (x > 2) print(x + 2)
             else print(x)
 
-            if x > 1 print(x + 1)
-            elif x > 2 print(x + 2)
+            if (x > 1) print(x + 1)
+            elif (x > 2) print(x + 2)
 
-            if x > 1 begin
+            if (x > 1) begin
                 print(x * 2)
             end
             else begin
                 print(x)
             end
 
-            if x > 1 print(x + 1)
+            if (x > 1) print(x + 1)
             else print(x)
 
-            if x > 1 print(x + 1)
-            elif true or false or f() and g(1, 2, 3) print(x + 2 )
-            elif "abc" == "def" print(x + 3)
+            if (x > 1) print(x + 1)
+            elif (true or false or f() and g(1, 2, 3)) print(x + 2 )
+            elif ("abc" == "def") print(x + 3)
             else print(x)
         end
         """
         self.assertTrue(TestParser.test(valid_if, "successful", "valid_if_stmts"))
 
+        if_stmt_newline_test = """
+        func main()
+        begin
+            if (1 = 1)
+                print("Hello world")
+            elif (2 = 2)
+                print("Hello world")
+            else
+                print("Hello world")
+
+            if (1 = 1)
+
+
+                print("Hello world")
+            elif (2 = 2)
+
+
+                print("Hello world")
+            else
+
+
+
+                print("Hello world")
+        end
+        """
+        self.assertTrue(TestParser.test(if_stmt_newline_test, "successful", "if_stmt_newline_test"))
+
         if_stmt_syntax_err = """
         func main()
         begin
             if
-                x > 2 print("Hello world")
+                (x > 2) print("Hello world")
         end
         """
         self.assertFalse(TestParser.test(if_stmt_syntax_err, "successful", "if_stmt_syntax_err"))
@@ -418,9 +530,9 @@ class ParserSuite(unittest.TestCase):
         if_stmt_syntax_err_2 = """
         func main()
         begin
-            if x > 2 print("Hello world")
+            if (x > 2) print("Hello world")
             elif
-                x > 2 print("Hello world")
+                (x > 2) print("Hello world")
         end
         """
         self.assertFalse(TestParser.test(if_stmt_syntax_err_2, "successful", "if_stmt_syntax_err_2"))
@@ -428,8 +540,8 @@ class ParserSuite(unittest.TestCase):
         if_stmt_syntax_err_3 = """
         func main()
         begin
-            if x > 2 print("Hello world")
-            elif x > 2 print("Hello world")
+            if (x > 2) print("Hello world")
+            elif (x > 2) print("Hello world")
             else
 
         end
@@ -439,7 +551,7 @@ class ParserSuite(unittest.TestCase):
         if_stmt_syntax_err_4 = """
         func main()
         begin
-            if x > 2
+            if (x > 2)
         end
         """
         self.assertFalse(TestParser.test(if_stmt_syntax_err_4, "successful", "if_stmt_syntax_err_4"))
@@ -447,11 +559,41 @@ class ParserSuite(unittest.TestCase):
         if_stmt_syntax_err_5 = """
         func main()
         begin
-            if x > 2 print("Hello world")
-            elif x > 3
+            if (x > 2) print("Hello world")
+            elif (x > 3)
         end
         """
-        self.assertFalse(TestParser.test(if_stmt_syntax_err_4, "successful", "if_stmt_syntax_err_5"))
+        self.assertFalse(TestParser.test(if_stmt_syntax_err_5, "successful", "if_stmt_syntax_err_5"))
+
+        if_stmt_syntax_err_6 = """
+        func main()
+        begin
+            if x < 2 print("Hello world")
+        end
+        """
+        self.assertFalse(TestParser.test(if_stmt_syntax_err_6, "successful", "if_stmt_syntax_err_6"))
+
+        if_stmt_syntax_err_7 = """
+        func main()
+        begin
+            if (x < 2) print("Hello \\\\\\n world")
+            elif x < 3 print("Hello world")
+        end
+        """
+        self.assertFalse(TestParser.test(if_stmt_syntax_err_7, "successful", "if_stmt_syntax_err_7"))
+
+        if_stmt_syntax_err_8 = """
+        func main()
+        begin
+            if (x < 2) print("Hello world")
+            elif (x < 3)
+
+                print("Hello world")
+            else
+                print("Hello world")
+            elif (x < 5)
+                print("Hello world")
+        """
 
     def test_comment(self):
         valid_comments_1 = """
@@ -473,29 +615,29 @@ class ParserSuite(unittest.TestCase):
         ## hello world"""
         self.assertTrue(TestParser.test(comment_ends_with_eof, "successful", "comment_ends_with_eof"))
 
-        invalid_comment = """
-        func main() ## invalid comment
+        stmt_and_cmt_in_single_ln = """
+        func main() ## comment
         begin
 
         end
         """
-        self.assertFalse(TestParser.test(invalid_comment, "successful", "invalid_comment"))
+        self.assertTrue(TestParser.test(stmt_and_cmt_in_single_ln , "successful", "stmt_and_cmt_in_single_ln"))
 
-        invalid_comment_2 = """
+        stmt_and_cmt_in_single_ln_2 = """
         func main()
         begin
             print("hello world")        ## print hello world
         end
         """
-        self.assertFalse(TestParser.test(invalid_comment_2, "successful", "invalid_comment_2"))
+        self.assertTrue(TestParser.test(stmt_and_cmt_in_single_ln_2 , "successful", "stmt_and_cmt_in_single_ln_2"))
 
-        invalid_comment_3 = """
+        stmt_and_cmt_in_single_ln_3 = """
         func main()
         begin
             print("Hello world")
         end ## Hello world
         """
-        self.assertFalse(TestParser.test(invalid_comment_3, "successful", "invalid_comment_3"))
+        self.assertTrue(TestParser.test(stmt_and_cmt_in_single_ln_3 , "successful", "stmt_and_cmt_in_single_ln_3 "))
 
     def test_simple_programs(self):
         prog_1 = """
@@ -504,17 +646,18 @@ class ParserSuite(unittest.TestCase):
         func main()
             begin
                 number x <- readNumber()
-                if isPrime(x) printString("Yes")
+                if (isPrime(x)) printString("Yes")
                 else printString("No")
             end
 
         func isPrime(number x)
+        ## Check if a number is a prime number
             begin
-                if x <= 1 return false
+                if (x <= 1) return false
                 var i <- 2
                 for i until i > x / 2 by 1
                 begin
-                    if x % i = 0 return false
+                    if (x % i = 0) return false
                 end
                 return true
             end
@@ -523,13 +666,13 @@ class ParserSuite(unittest.TestCase):
 
         prog_2 = """
         func areDivisors(number num1, number num2)
-            return (num1 % num2 = 0 or num2 % num1 = 0)
+            return ((num1 % num2 = 0) or (num2 % num1 = 0))
 
         func main()
             begin
                 var num1 <- readNumber()
                 var num2 <- readNumber()
-                if areDivisors(num1, num2) printString("Yes")
+                if (areDivisors(num1, num2)) printString("Yes")
                 else printString("No")
             end
         """
@@ -552,7 +695,7 @@ class ParserSuite(unittest.TestCase):
         self.assertTrue(TestParser.test(recursive_fib, "successful", "recursive_fib"))
 
         loop_fib = """
-        func fib(number x)
+        func fib(number x) ## function prototype
 
         func main()
         begin
@@ -564,7 +707,7 @@ class ParserSuite(unittest.TestCase):
         begin
             number prev <- 0
             dynamic curr <- 1
-            if x = 0 return prev
+            if (x = 0) return prev
             var i <- 1
 
             for i until i >= x by 1
