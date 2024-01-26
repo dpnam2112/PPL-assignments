@@ -2,7 +2,7 @@
 
 ## Introduction
 
-In Ho Chi Minh University of Technology, we computer science students have a required course called
+At Ho Chi Minh University of Technology, we computer science students have a required course called
 "Principles of programming languages" (or PPL for short). This course teaches us about programming
 language design and implementations. In this course, we are required to write a simple compiler for
 a simple, JVM-based programming language named 'Zcode'.
