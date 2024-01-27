@@ -161,23 +161,36 @@ class LexerSuite(unittest.TestCase):
         tc_name_getter = self.testcase_name_getter(prefix="testExpr")
 
         self.assertTrue(TestLexer.test("1234567", "1234567,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("1234.567", "1234.567,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("1.1293e12 +  1.23e13 * -13", "1.1293e12,+,1.23e13,*,-,13,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("1.1293 e  -12 + 1.23e13 -8", "1.1293,e,-,12,+,1.23e13,-,8,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("abc % _def() - 23    + ghi12()   >= 584 and 2 ", "abc,%,_def,(,),-,23,+,ghi12,(,),>=,584,and,2,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("abc == _def12(1,2,5) and ghi() <= er12", "abc,==,_def12,(,1,,,2,,,5,),and,ghi,(,),<=,er12,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("1 + 2 < 3 and  \"fdi\" == \"fkkdf\"", "1,+,2,<,3,and,fdi,==,fkkdf,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("foo([1,2,3,4],5) + 8 < 12", "foo,(,[,1,,,2,,,3,,,4,],,,5,),+,8,<,12,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("_foo__([[1],[2]]) != 3", "_foo__,(,[,[,1,],,,[,2,],],),!=,3,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("__12f__ ... __13f__ = __14f__", "__12f__,...,__13f__,=,__14f__,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("a[1] + b[1, 2] + c[1, 3]", "a,[,1,],+,b,[,1,,,2,],+,c,[,1,,,3,],<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("not true", "not,true,<EOF>", tc_name_getter()))
 
     def test_statement(self):
         tc_name_getter = self.testcase_name_getter(prefix="testStmt")
         # assignment statement
         self.assertTrue(TestLexer.test("var x <- 1\ndynamic x<- 2", "var,x,<-,1,\n,dynamic,x,<-,2,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("bool x[2, 2] <- [[1, 2], [3,4]]", "bool,x,[,2,,,2,],<-,[,[,1,,,2,],,,[,3,,,4,],],<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("number _12y <- 3\nstring _13z <- \"abc\"", "number,_12y,<-,3,\n,string,_13z,<-,abc,<EOF>", tc_name_getter()))
 
         # branch statement
@@ -195,10 +208,15 @@ class LexerSuite(unittest.TestCase):
         tc_name_getter = self.testcase_name_getter(prefix="testInvalidChar")
 
         self.assertTrue(TestLexer.test(";;;", ErrorToken(";").message, tc_name_getter()))
+
         self.assertTrue(TestLexer.test("abc__123;", "abc__123," + ErrorToken(";").message, tc_name_getter()))
+
         self.assertTrue(TestLexer.test("# hello world", ErrorToken("#").message, tc_name_getter()))
+
         self.assertTrue(TestLexer.test("abc__123 + 123 ;", "abc__123,+,123," + ErrorToken(";").message, tc_name_getter()))
+
         self.assertTrue(TestLexer.test("abc__123 && + 123 ;", "abc__123," + ErrorToken("&").message, tc_name_getter()))
+
         self.assertTrue(TestLexer.test("a and !b", "a,and," + ErrorToken("!").message, tc_name_getter()))
 
         """ "Hello \\"'" """
@@ -209,17 +227,24 @@ class LexerSuite(unittest.TestCase):
         tc_name_getter = self.testcase_name_getter(prefix="testComment")
 
         self.assertTrue(TestLexer.test("123 + 456\n##hello world\n", "123,+,456,\n,\n,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("123 + 456\n##hello world", "123,+,456,\n,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("123 + 456\n## hello world \n\n\n\n\n",
                                        "123,+,456,\n,\n,\n,\n,\n,\n,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("hello world \n\n ## hello world\n\n",
                                        "hello,world,\n,\n,\n,\n,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("## this is a boolean expression\n\n  true and false and true\n",
                                        "\n,\n,true,and,false,and,true,\n,<EOF>", tc_name_getter()))
+
         ##########
         ##      ##
         ##      ##
         ##########
         self.assertTrue(TestLexer.test("##########\n##      ##\n##      ##\n##########", "\n,\n,\n,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("############", "<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("print(\"Hello world\") # print hello world", "print,(,Hello world,)," + ErrorToken("#").message, tc_name_getter()))

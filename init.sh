@@ -1,14 +1,10 @@
-export PROJ_DIR=.
+# Activate the virtual environment and required environment variables
 
-if [ ! -d ${PROJ_DIR}/antlr-4.9.2-complete.jar ]; then
+export PROJ_DIR=$(pwd)
 
-fi
+mkdir -p $PROJ_DIR/src/test/testcases/
+mkdir -p $PROJ_DIR/src/test/solutions/
 
-export ANTLR_JAR=${PROJ_DIR}/antlr-4.9.2-complete.jar
+export ANTLR_JAR=$PROJ_DIR/antlr-4.9.2-complete.jar
 
-python3 -m venv .env
-
-pip3 install antlr4-python3-runtime==4.9.2
-
-mkdir -p test/testcases/
-mkdir -p test/solutions
+. $PROJ_DIR/.env/bin/activate

@@ -108,10 +108,50 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(func_decl_syntax_err_11, "successful", "func_decl_syntax_err_11"))
 
+        func_decl_syntax_err_12 = """
+        func f(number x, number y print(x + y)
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_12, "successful", "func_decl_syntax_err_12"))
+
         func_decl_syntax_err_13 = """
         func f(number x, number y, z)
         """
         self.assertFalse(TestParser.test(func_decl_syntax_err_13, "successful", "func_decl_syntax_err_13"))
+
+        func_decl_syntax_err_14 = """
+        func f(number x, number y, number z[100, 10)
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_14, "successful", "func_decl_syntax_err_14"))
+
+        func_decl_syntax_err_15 = """
+        func f(number x, number y, number z[100)
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_15, "successful", "func_decl_syntax_err_15"))
+
+        func_decl_syntax_err_16 = """
+        func f(number bool, number y, number z[100])
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_16, "successful", "func_decl_syntax_err_16"))
+
+        func_decl_syntax_err_17 = """
+        func f(number string, number y, number z[100])
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_17, "successful", "func_decl_syntax_err_17"))
+
+        func_decl_syntax_err_18 = """
+        func f(number string, number y, number z[100], )
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_18, "successful", "func_decl_syntax_err_18"))
+
+        func_decl_syntax_err_19 = """
+        funC f(number string, number y, number z[100])
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_19, "successful", "func_decl_syntax_err_19"))
+
+        func_decl_syntax_err_20 = """
+        func 123(number string)
+        """
+        self.assertFalse(TestParser.test(func_decl_syntax_err_20, "successful", "func_decl_syntax_err_20"))
 
         variable_decl_outside_func_body = """
         func main()
@@ -263,6 +303,8 @@ class ParserSuite(unittest.TestCase):
             dynamic x <- a[1,2,3] * g[1, 2] - 4
 
             var x <- a[i1, (i1 + i2 * 2e1) * 0] * g[i2] - h(1, 2, 3, 4, 5) 
+
+            var x <- 4 - (4 - (4 + 4 * (4 / (f(4, a[4])))))
         end
         """
 
@@ -278,6 +320,38 @@ class ParserSuite(unittest.TestCase):
         end
         """
         self.assertTrue(TestParser.test(simple_logical_expr, "successful", "simple_logical_expr"))
+
+        missing_parentheses_0 = """
+        func main()
+        begin
+            var x <- f(
+        end
+        """
+        self.assertFalse(TestParser.test(missing_parentheses_0, "successful", "missing_parentheses_0"))
+
+        missing_parentheses_1 = """
+        func main()
+        begin
+            var x <- (1 + 2 + 3
+        end
+        """
+        self.assertFalse(TestParser.test(missing_parentheses_1, "successful", "missing_parentheses_1"))
+
+        missing_parentheses_2 = """
+        func main()
+        begin
+            var x <- 1e3 + 5 / 6 + ( 123 -  11 / (1 + 5 - 6)
+        end
+        """
+        self.assertFalse(TestParser.test(missing_parentheses_2, "successful", "missing_parentheses_2"))
+
+        missing_parentheses_3 = """
+        func main()
+        begin
+            var x <- 1e3 + 5 / 6 + ( 123 -  11 / (1 + 5 - 6)
+        end
+        """
+        self.assertFalse(TestParser.test(missing_parentheses_2, "successful", "missing_parentheses_2"))
 
 
     def test_case_sensitivity(self):
@@ -332,19 +406,48 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(case_sensitivity_test_6, "successful", "case_sensitivity_test_6"))
 
+        case_sensitivity_test_7 = """
+        func main()
+        begin
+            print("Hello world")
+        enD
+        """
+        self.assertFalse(TestParser.test(case_sensitivity_test_7, "successful", "case_sensitivity_test_7"))
+
+        case_sensitivity_test_8 = """
+        func main()
+        bEgin
+            print("Hello world")
+        end
+        """
+        self.assertFalse(TestParser.test(case_sensitivity_test_8, "successful", "case_sensitivity_test_8"))
+
     def test_assignment(self):
         assignment = """
         func main()
         begin
             ## simple assignment statements
             x <-  1 + 2 + 3
+
             number y[10]
+            number z[2, 3]
+
             y[5] <- 10
+
             y[6] <-  11
+
             y[7] <- y[5] + y[6]
+
             y[x + 3] <- 1 + 2
+
             y[y[5]] <- 4 + 5 * 3 / 2 % 1
+
             y[y[4] * 3 - 2] <- 4 *4 * 4 
+
+            z[0, 0] <- 1
+            z[1, 0] <- 2
+            z[2, 1] <- 34 * 55 - (1 - (2 + 3 * (3 + 4)))
+            z[4, 4] <- 1111
         end
         """
         self.assertTrue(TestParser.test(assignment, "successful", "simple_assignment"))
@@ -394,6 +497,69 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(asgn_syntax_err_4, "successful", "asgn_syntax_err_4"))
 
+        asgn_syntax_err_5 = """
+        func main()
+        begin
+            5 <- 1 + 2
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_5, "successful", "asgn_syntax_err_5"))
+
+        asgn_syntax_err_6 = """
+        func main()
+        begin
+            "abc" <- "abc" ... "abc"
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_6, "successful", "asgn_syntax_err_6"))
+
+        asgn_syntax_err_7 = """
+        func main()
+        begin
+            false <- false and false and f()
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_7, "successful", "asgn_syntax_err_7"))
+
+        asgn_syntax_err_8 = """
+        func main()
+        begin
+            true <- false and false and f()
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_8, "successful", "asgn_syntax_err_8"))
+
+        asgn_syntax_err_9 = """
+        func main()
+        begin
+            f() <- false and false and false
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_9, "successful", "asgn_syntax_err_9"))
+
+        asgn_syntax_err_10 = """
+        func main()
+        begin
+            a[1,2,3,] <- false and false
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_10, "successful", "asgn_syntax_err_10"))
+
+        asgn_syntax_err_11 = """
+        func main()
+        begin
+            a[ <- false and false
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_11, "successful", "asgn_syntax_err_11"))
+
+        asgn_syntax_err_12 = """
+        func main()
+        begin
+            a[1] = 1
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_12, "successful", "asgn_syntax_err_12"))
 
     def test_loop(self):
         simple_loop = """
@@ -402,6 +568,7 @@ class ParserSuite(unittest.TestCase):
             for i until f(i, j) > 5 by 5
                 print("Hello world")
 
+            ## there can be no newline characters between update expression and body
             for i until f(i, j) > 5 by 5 print("Hello world")
 
             for i until f(i, j, k) * 5 + 2 < 5 by -5
@@ -411,9 +578,13 @@ class ParserSuite(unittest.TestCase):
                 print("Hello world")
 
             for i until a[i] * a[j] < 10 by a[i + 3] * 6
+                ## the parser should recognize the loop statement if
+                ## we put spaces between update expression and body
 
+                print("Hello world")
 
-
+            for i until (f(i) and (g(i) or h(i))) by (i + 1 + 2 / (3 * 4))
+                ## put complex expressions in condition place and update place
                 print("Hello world")
 
 
@@ -461,6 +632,15 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(loop_syntax_err_3, "successful", "loop_syntax_err_3"))
 
+        loop_syntax_err_4 = """
+        func main()
+        begin
+            ## missing loop body
+            for i until i > 5 by 1
+        end
+        """
+        self.assertFalse(TestParser.test(loop_syntax_err_4, "successful", "loop_syntax_err_4"))
+
     def test_if_stmt(self):
         valid_if = """
         func main() begin
@@ -502,7 +682,6 @@ class ParserSuite(unittest.TestCase):
                 print("Hello world")
 
             if (1 = 1)
-
 
                 print("Hello world")
             elif (2 = 2)
@@ -585,15 +764,40 @@ class ParserSuite(unittest.TestCase):
         if_stmt_syntax_err_8 = """
         func main()
         begin
+            if (x < 2 print("Hello world")
+            elif (x < 3)
+
+                print("Hello world")
+            else
+                print("Hello world")
+        """
+        self.assertFalse(TestParser.test(if_stmt_syntax_err_8, "successful", "if_stmt_syntax_err_8"))
+
+        if_stmt_syntax_err_9 = """
+        func main()
+        begin
+            if (x < 2) print("Hello world")
+            elif (x < 3
+
+                print("Hello world")
+            else
+                print("Hello world")
+        """
+        self.assertFalse(TestParser.test(if_stmt_syntax_err_9, "successful", "if_stmt_syntax_err_9"))
+
+        if_stmt_syntax_err_10 = """
+        func main()
+        begin
             if (x < 2) print("Hello world")
             elif (x < 3)
 
                 print("Hello world")
             else
                 print("Hello world")
-            elif (x < 5)
+            elif (x < 100)
                 print("Hello world")
         """
+        self.assertFalse(TestParser.test(if_stmt_syntax_err_10, "successful", "if_stmt_syntax_err_10"))
 
     def test_comment(self):
         valid_comments_1 = """

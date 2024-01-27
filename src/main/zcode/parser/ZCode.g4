@@ -205,12 +205,15 @@ COMMENT_EOF : '##' (~[\n])*? EOF -> skip ;
 fragment
 ESCAPE_SEQ: '\\' [\\frtnb'] | '\'"' ;
 
+fragment
+INVALID_ESC: '\\' ~[\\frtnb'] ;
+
 STR_LIT 
 	: '"' (ESCAPE_SEQ | ~[\r\n\\"] )*? '"' 
     { self.text = self.text[1:-1] };
 
-INVALID_ESC 
-	: '"' (ESCAPE_SEQ | ~[\r\n\\"])* ('\\' ~[\\frtnb'] | '\\' EOF) 
+INVALID_ESC_STR
+	: '"' (ESCAPE_SEQ | ~[\r\n\\"])* (INVALID_ESC | '\\' EOF) 
 { 
 content = self.text[1:]
 raise IllegalEscape(content)
