@@ -23,10 +23,15 @@ This repository is used to store assignment details and my solution of each assi
 
 ## Requirements
 
+Python 3
+
 ## How to run
 
+Download ANTLR v4.9.2 and put it in the project directory: https://www.antlr.org/download.html
+
 ### On Linux/Unix
-    source ./init.sh
+    source ./install_pkg.sh # create virtual environment and install all required Python packages
+    source ./init.sh        # initialize environment variables
 
 ### On Windows
 
