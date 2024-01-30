@@ -1,14 +1,21 @@
 import sys,os
 from antlr4 import *
 from antlr4.error.ErrorListener import ConsoleErrorListener,ErrorListener
-if not './main/zcode/parser/' in sys.path:
-    sys.path.append('./main/zcode/parser/')
+# if not './main/zcode/parser/' in sys.path:
+#     sys.path.append('./main/zcode/parser/')
+
 if os.path.isdir('../target/main/zcode/parser') and not '../target/main/zcode/parser/' in sys.path:
     sys.path.append('../target/main/zcode/parser/')
+
+import_paths = ["./main/zcode/" + folderName for folderName in ["astgen", "parser", "utils"]]
+for path in import_paths: 
+    if path not in sys.path:
+        sys.path.append(path)
+
 from ZCodeLexer import ZCodeLexer
 from ZCodeParser import ZCodeParser
 from lexererr import *
-# from ASTGeneration import ASTGeneration
+from ASTGeneration import ASTGeneration
 # from StaticCheck import StaticChecker
 # from StaticError import *
 # from CodeGenerator import CodeGenerator

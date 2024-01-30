@@ -1,0 +1,9 @@
+{
+  "extraPaths" : [
+    "./src/main/zcode/astgen",
+    "./src/main/zcode/parser",
+    "./src/main/zcode/utils",
+    "./src/test",
+    "./target/main/zcode/parser"
+  ]
+}

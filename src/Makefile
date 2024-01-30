@@ -15,9 +15,7 @@ build-parser:
 	$(MAKE) clean-target
 	$(PYTHON) run.py gen
 
-test-recognizer:
-	$(PYTHON) run.py test LexerSuite
-	$(PYTHON) run.py test ParserSuite
+test: test-lexer test-parser test-ast-gen
 
 test-lexer:
 	$(PYTHON) run.py test LexerSuite
@@ -25,13 +23,16 @@ test-lexer:
 test-parser:
 	$(PYTHON) run.py test ParserSuite
 
+test-ast-gen:
+	$(PYTHON) run.py test ASTGenSuite
+
 clean:
-	rm -r $(TARGET_DIR)/*
-	rm -r test/solutions/*
-	rm -r test/testcases/*
+	rm -rf $(TARGET_DIR)/*
+	rm -rf test/solutions/*
+	rm -rf test/testcases/*
 
 clean-target:
-	rm -r $(TARGET_DIR)/*
+	rm -rf $(TARGET_DIR)/*
 
 # These rules are used to gather all required files for submission.
 submit-recognizer: build-parser
@@ -48,3 +49,4 @@ submit-ast:
 submit-static-checking:
 
 submit-bytecode-gen:
+

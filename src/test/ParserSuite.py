@@ -161,7 +161,7 @@ class ParserSuite(unittest.TestCase):
 
         var x <- 1
         """
-        self.assertFalse(TestParser.test(variable_decl_outside_func_body, "successful", "variable_decl_outside_func_body"))
+        self.assertTrue(TestParser.test(variable_decl_outside_func_body, "successful", "variable_decl_outside_func_body"))
 
         ifstmt_outside_func_body = """
         func main()
@@ -206,6 +206,21 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertTrue(TestParser.test(valid_arr_decl, "successful", "valid_arr_dim"))
 
+        invalid_arr_decl = """
+        var x[1, 2, 3] <- [1, 2, 3]
+        """
+        self.assertFalse(TestParser.test(invalid_arr_decl, "successful", "invalid_arr_decl"))
+
+        invalid_arr_decl_2 = """
+        number x["abc", "def", 2] <- [1, 2, 3]
+        """
+        self.assertFalse(TestParser.test(invalid_arr_decl_2, "successful", "invalid_arr_decl_2"))
+
+        invalid_arr_decl_3 = """
+        dynamic x[1, 2, 3] <- [1, 2, 3]
+        """
+        self.assertFalse(TestParser.test(invalid_arr_decl_3, "successful", "invalid_arr_decl_3"))
+
         multidim_arr_decl = """
         func main()
         begin
@@ -230,6 +245,54 @@ class ParserSuite(unittest.TestCase):
         end
         """
         self.assertTrue(TestParser.test(variable_decl, "successful", "simple_var_decl"))
+
+        variable_decl_2 = """
+        var x <- 1
+        dynamic y <- 1 + 2.3 * 3E5
+        number x <- f(1, 2)
+        bool x <- true and false or f(1, 2)
+        """
+        self.assertTrue(TestParser.test(variable_decl, "successful", "simple_var_decl_2"))
+
+        dynamic_with_dimensions = """
+        func main()
+        begin
+            dynamic x[1,2] <- [1,2,3,4,5]
+        end
+        """
+        self.assertFalse(TestParser.test(dynamic_with_dimensions, "successful",
+                                        "dynamic_with_dimensions"))
+
+        var_with_dimensions = """
+        func main()
+        begin
+            var x[1,2] <- [1,2,3,4,5]
+        end
+        """
+        self.assertFalse(TestParser.test(var_with_dimensions, "successful",
+                                        "var_with_dimensions"))
+        
+        decl_at_top_level_code = """
+        var x <- 1
+        number x[10] <- [1,2,3,4,5,6,7]
+
+        func main()
+        begin
+
+        end
+
+        bool a <- true
+        bool b
+        bool c
+
+        string x
+        string y
+        string z
+
+        string z[10]
+
+        dynamic z
+        """
 
 
     def test_expression(self):
@@ -304,7 +367,7 @@ class ParserSuite(unittest.TestCase):
 
             var x <- a[i1, (i1 + i2 * 2e1) * 0] * g[i2] - h(1, 2, 3, 4, 5) 
 
-            var x <- 4 - (4 - (4 + 4 * (4 / (f(4, a[4])))))
+            var x <- 4 - (4 - (4 + 4 * (4 / (f(4, a[4], a[4, 4, 4], b[4,4+4-4+g()])))))
         end
         """
 
@@ -352,6 +415,63 @@ class ParserSuite(unittest.TestCase):
         end
         """
         self.assertFalse(TestParser.test(missing_parentheses_2, "successful", "missing_parentheses_2"))
+
+        missing_operator = """
+        func main()
+        begin
+            dynamic x <- 1 +
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator, "successful", "missing_operator"))
+
+        missing_operator_2 = """
+        func main()
+        begin
+            dynamic x <- 2 + 3 * / 4
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator_2, "successful", "missing_operator_2"))
+
+        missing_operator_3 = """
+        func main()
+        begin
+            var x <- 2e5 -
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator_3, "successful", "missing_operator_3"))
+
+        missing_operator_4 = """
+        func main()
+        begin
+            var x <- 2e5[]
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator_4, "successful", "missing_operator_4"))
+
+        missing_operator_5 = """
+        func main()
+        begin
+            var x <- ... "abc"
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator_5, "successful", "missing_operator_5"))
+
+        missing_operator_6 = """
+        func main()
+        begin
+            var x <- true and
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator_6, "successful", "missing_operator_6"))
+
+        missing_operator_7 = """
+        func main()
+        begin
+            var x <- true or
+        end
+        """
+        self.assertFalse(TestParser.test(missing_operator_7, "successful", "missing_operator_7"))
+
 
 
     def test_case_sensitivity(self):
@@ -560,6 +680,14 @@ class ParserSuite(unittest.TestCase):
         end
         """
         self.assertFalse(TestParser.test(asgn_syntax_err_12, "successful", "asgn_syntax_err_12"))
+
+        asgn_syntax_err_13 = """
+        func main()
+        begin
+            a[1][1] <- 1
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_13, "successful", "asgn_syntax_err_13"))
 
     def test_loop(self):
         simple_loop = """
@@ -949,6 +1077,5 @@ class ParserSuite(unittest.TestCase):
             for i until i >= 100 by 1
                 sum <- sum + v1[i] * v2[i]
             return sum
-        end
-        """
+        end ## end of program"""
         self.assertTrue(TestParser.test(find_sum, "successful", "dot_product"))

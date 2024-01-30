@@ -14,7 +14,7 @@ options {
 	language=Python3;
 }
 
-program: (funcDecl | COMMENT_EOF | nlList)* EOF;
+program: (funcDecl | nlList | variableDecl)* EOF;
 
 // newline list
 nlList: NEWLINE+ ;
@@ -41,7 +41,7 @@ arrayDim : '[' NUM_LIT (',' NUM_LIT)* ']' ;
 
 index : '[' exprList ']' ;
 
-assignmentStmt : ID index? ASSIGN expr NEWLINE ;
+assignmentStmt : (ID | idIndex) ASSIGN expr NEWLINE ;
 
 forStmt : 'for' ID 'until' expr 'by' expr nlList? stmt ;
 
@@ -51,7 +51,7 @@ variableDecl
     | VAR ID ASSIGN expr NEWLINE ;
 
 // Function declaration
-funcDecl 
+funcDecl
 : 'func' ID '(' paramListDecl? ')'
     ( blockStmt | returnStmt | NEWLINE+ (blockStmt | returnStmt)?);
 
@@ -91,7 +91,7 @@ exprList
 functionCall: ID '(' exprList? ')' ;
 
 array
-	: '[' exprList? ']' ;
+	: '[' exprList ']' ;
 
 literalList
      : (NUM_LIT | STR_LIT | TRUE | FALSE | array) (',' (NUM_LIT | STR_LIT | TRUE | FALSE | array))*
@@ -99,7 +99,10 @@ literalList
 
 indexExpr
     : primary
-    | indexExpr '[' exprList ']' ;
+    | idIndex ;
+
+idIndex
+    : ID index ;
 
 signExpr
     : indexExpr
@@ -182,9 +185,11 @@ BY: 'by' ;
 fragment
 NEWLINE_CHAR: '\r'? '\n' ;
 
+COMMENT
+ : '##' (~[\n])* EOF? -> skip ;
+
 NEWLINE
- : '##'(~[\n])*? ('\r'? '\n') {self.text = self.text[-1] }
- | ('\r'? '\n') ;
+ : '\n' ;
 
 fragment
 DIGIT: [0-9] ;
@@ -199,8 +204,6 @@ fragment
 DECIMAL_PART :  '.' DIGITS? ;
 
 NUM_LIT : DIGITS DECIMAL_PART? SCI_NOTATION? ;
-
-COMMENT_EOF : '##' (~[\n])*? EOF -> skip ;
 
 fragment
 ESCAPE_SEQ: '\\' [\\frtnb'] | '\'"' ;
@@ -219,16 +222,17 @@ content = self.text[1:]
 raise IllegalEscape(content)
 };
 
-UNCLOSED_STR : '"' ('\\' [\\frtnb'] | '\'"' | ~['"\\])*? ('\n' | EOF) {
+UNCLOSED_STR : '"' ('\\' [\\frtnb'] | '\'"' | ~['"\\])*? (NEWLINE | EOF) {
 content = self.text
 content = content[1:] if content[-1] != '\n' else content[1:-1]
+content = content[:-1] if content[-1] == '\r' else content
 raise UncloseString(content)
 };   // unclosed string
 
 
 ID: [a-zA-Z_][a-zA-Z_0-9]* ;
 
-WS: [ \t\r\f]+ -> skip ;
+WS: [ \t\r\f\b]+ -> skip ;
 
 UNRECOGNIZED_CHAR: .  {
 raise ErrorToken(self.text[-1])

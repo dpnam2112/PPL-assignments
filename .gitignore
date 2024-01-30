@@ -1,6 +1,6 @@
-target
 src/test/solutions/
 src/test/testcases/
 __pycache__/
 .*
+target
 submit*

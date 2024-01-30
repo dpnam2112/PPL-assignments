@@ -247,4 +247,12 @@ class LexerSuite(unittest.TestCase):
 
         self.assertTrue(TestLexer.test("############", "<EOF>", tc_name_getter()))
 
+        self.assertTrue(TestLexer.test("## hello world\n##hello world", "\n,<EOF>", tc_name_getter()))
+
         self.assertTrue(TestLexer.test("print(\"Hello world\") # print hello world", "print,(,Hello world,)," + ErrorToken("#").message, tc_name_getter()))
+
+    def test_whitespace(self):
+        tc_name_getter = self.testcase_name_getter(prefix="test_ws")
+
+        self.assertTrue(TestLexer.test("\r\b\t\f        \r\b\t\f\r\r\b  ", "<EOF>",
+                                       tc_name_getter()))
