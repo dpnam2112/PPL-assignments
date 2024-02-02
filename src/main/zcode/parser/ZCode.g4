@@ -99,7 +99,7 @@ literalList
 
 indexExpr
     : primary
-    | idIndex ;
+    | (ID | functionCall) index ;
 
 idIndex
     : ID index ;
@@ -132,6 +132,15 @@ expr
     : relationalExpr
     | relationalExpr TRIP_DOT relationalExpr ;
  
+// Multiple character token
+
+LT_EQ: '<=' ;
+GT_EQ: '>=' ;
+EQ_EQ: '==' ;
+NOT_EQ: '!=' ;
+ASSIGN: '<-' ;
+TRIP_DOT: '...' ;
+
 // Single character tokens
 
 EQ : '=' ;
@@ -148,14 +157,6 @@ PERCENT: '%' ;
 GT: '>' ;
 LT: '<' ;
 
-// Multiple character token
-
-LT_EQ: '<=' ;
-GT_EQ: '>=' ;
-EQ_EQ: '==' ;
-NOT_EQ: '!=' ;
-ASSIGN: '<-' ;
-TRIP_DOT: '...' ;
 
 // Keywords
 

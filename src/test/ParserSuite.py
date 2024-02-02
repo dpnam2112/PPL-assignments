@@ -472,7 +472,17 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(missing_operator_7, "successful", "missing_operator_7"))
 
-
+        index_expr_test = """
+        func main()
+        begin
+            var x <- x[1, 2, 3]
+            var x <- x[1]
+            var x <- f(1,2,3)[1,2,3]
+            var x <- f()[1,2,3]
+            var x <- f(1)[1]
+        end
+        """
+        self.assertTrue(TestParser.test(index_expr_test, "successful", "index_expr_test"))
 
     def test_case_sensitivity(self):
         case_sensitivity_test_1 = """
@@ -689,7 +699,24 @@ class ParserSuite(unittest.TestCase):
         """
         self.assertFalse(TestParser.test(asgn_syntax_err_13, "successful", "asgn_syntax_err_13"))
 
+        asgn_syntax_err_14 = """
+        func main()
+        begin
+            f()[1] <- 1
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_14, "successful", "asgn_syntax_err_14"))
+
+        asgn_syntax_err_15 = """
+        func main()
+        begin
+            f(1, 2)[1] <- 1
+        end
+        """
+        self.assertFalse(TestParser.test(asgn_syntax_err_15, "successful", "asgn_syntax_err_15"))
+
     def test_loop(self):
+
         simple_loop = """
         func main()
         begin

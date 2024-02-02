@@ -219,8 +219,10 @@ class LexerSuite(unittest.TestCase):
 
         self.assertTrue(TestLexer.test("a and !b", "a,and," + ErrorToken("!").message, tc_name_getter()))
 
-        """ "Hello \\"'" """
+        """ "Hello \"'" """
         self.assertTrue(TestLexer.test("\"Hello \\\\\"'\"", "Hello \\\\," + ErrorToken("'").message, tc_name_getter()))
+
+        self.assertTrue(TestLexer.test("abc $", f"abc,{ErrorToken('$').message}", tc_name_getter()))
 
 
     def test_comment(self):

@@ -2,7 +2,6 @@ from ZCodeVisitor import ZCodeVisitor
 from ZCodeParser import ZCodeParser
 from ZCodeLexer import ZCodeLexer
 from AST import *
-from functools import reduce
 
 class ASTGeneration(ZCodeVisitor):
     # Each visit method's return value belongs to only three types: AST, List of ASTs or None
@@ -21,40 +20,55 @@ class ASTGeneration(ZCodeVisitor):
         stmtListAst = ctx.stmtList() and ctx.stmtList().accept(self) or []
         return Block(stmt=stmtListAst)
 
+    def visitReturnStmt(self, ctx: ZCodeParser.ReturnStmtContext):
+        exprAst = ctx.expr() and ctx.expr().accept(self)
+        return Return(expr=exprAst)
+
     def visitStmtList(self, ctx: ZCodeParser.StmtListContext):
-        stmtAstList = []
-        for stmt in ctx.getChildren():
-            stmtAst = stmt.accept(self)
-            stmtAstList.append(stmtAst) if stmtAst else None
-        return stmtAstList
+            return [stmt.accept(self) for stmt in ctx.stmt()] if ctx.stmt() else []
 
     def visitFuncDecl(self, ctx: ZCodeParser.FuncDeclContext):
         iden = Id(name=ctx.ID().getText())
-        paramListAst = ctx.paramListDecl().accept(self)
+        paramListAst = ctx.paramListDecl() and ctx.paramListDecl().accept(self) or []
         body = ctx.blockStmt() or ctx.returnStmt()
+
+        # function declaration may not have a body
         bodyAst = body and body.accept(self)
         return FuncDecl(name=iden, param=paramListAst, body=bodyAst)
 
     def visitParamListDecl(self, ctx: ZCodeParser.ParamListDeclContext):
-        return reduce(lambda declList, decl: declList + (decl.accept(self) or []),
-                      ctx.getChildren(), [])
+        return [paramDecl.accept(self) for paramDecl in ctx.paramDecl()]
 
     def visitParamDecl(self, ctx: ZCodeParser.ParamDeclContext):
         iden = Id(name=ctx.ID().getText())
-        simpleType = ctx.getChild(0).accept(self)
-        return VarDecl(name=iden, varType=simpleType)
+        # string, bool or number
+        atomicType = ctx.getChild(0).accept(self)
+
+        if ctx.arrayDim():
+            arrSize = ctx.arrayDim().accept(self)
+            paramType = ArrayType(eleType=atomicType, size=arrSize)
+        else:
+            paramType = atomicType
+        return VarDecl(name=iden, varType=paramType)
 
     def visitVariableDecl(self, ctx: ZCodeParser.VariableDeclContext):
         iden = Id(name=ctx.ID().getText())
         exprAst = ctx.expr() and ctx.expr().accept(self)
-        declType = ctx.getChild(0).accept(self)
+
+        # atomicType is number, string, bool or None if the
+        # declaration keyword is dynamic or var
+        atomicType = ctx.getChild(0).accept(self)   
+        declType = atomicType if not ctx.arrayDim() else ArrayType(size=ctx.arrayDim().accept(self), eleType=atomicType)
         return VarDecl(name=iden, varType=declType, varInit=exprAst)
+
+    def visitArrayDim(self, ctx: ZCodeParser.ArrayDimContext):
+        return [float(dimLit.getText()) for dimLit in ctx.NUM_LIT()]
 
     def visitLoopCtrlStmt(self, ctx: ZCodeParser.LoopCtrlStmtContext):
         return ctx.getChild(0).accept(self)
 
     def visitAssignmentStmt(self, ctx: ZCodeParser.AssignmentStmtContext):
-        lhs = ctx.ID() or ctx.idIndex() or ctx.functionCallIndex()
+        lhs = ctx.ID() or ctx.idIndex()
         expr = ctx.expr()
         return Assign(lhs=lhs.accept(self), exp=expr.accept(self))
 
@@ -99,10 +113,11 @@ class ASTGeneration(ZCodeVisitor):
         return BinaryOp(op=op.getText(), left=leftOpAst, right=rightOpAst)
 
     def visitNegationExpr(self, ctx: ZCodeParser.NegationExprContext):
-        opAst = ctx.signExpr().accept(self)
-        if not ctx.NOT():
-            return opAst
-        return UnaryOp(op=ctx.NOT().getText(), operand=opAst)
+        if ctx.signExpr():
+            return ctx.signExpr().accept(self)
+
+        operandAst = ctx.negationExpr().accept(self)
+        return UnaryOp(op=ctx.NOT().getText(), operand=operandAst)
 
     def visitSignExpr(self, ctx: ZCodeParser.SignExprContext):
         opAst  = ctx.indexExpr().accept(self)
@@ -111,8 +126,12 @@ class ASTGeneration(ZCodeVisitor):
         return UnaryOp(op=ctx.MINUS().getText(), operand=opAst)
 
     def visitIndexExpr(self, ctx: ZCodeParser.IndexExprContext):
-        subRule = ctx.primary() or ctx.idIndex()
-        return subRule.accept(self)
+        if ctx.primary():
+            return ctx.primary().accept(self)
+        arrExprAST = (ctx.ID() or ctx.functionCall()).accept(self)
+        indexAST = ctx.index().accept(self)
+        return ArrayCell(arr=arrExprAST, idx=indexAST)
+        
 
     def visitIndex(self, ctx: ZCodeParser.IndexContext):
         return ctx.exprList().accept(self)
@@ -163,6 +182,10 @@ class ASTGeneration(ZCodeVisitor):
         exprList = [] if not ctx.exprList() else ctx.exprList().accept(self)
         return ArrayLiteral(value=exprList)
 
+    def visitCallStmt(self, ctx: ZCodeParser.CallStmtContext):
+        callAst = ctx.functionCall().accept(self)
+        return CallStmt(name=callAst.name, args=callAst.args)
+
     def visitFunctionCall(self, ctx: ZCodeParser.FunctionCallContext):
         iden = Id(name=ctx.ID().getText())
         exprListAst = ctx.exprList().accept(self) if ctx.exprList() else []
@@ -181,7 +204,7 @@ class ASTGeneration(ZCodeVisitor):
     def visitIfStmt(self, ctx: ZCodeParser.IfStmtContext):
         condAst = ctx.expr().accept(self)
         stmtAst = ctx.stmt().accept(self)
-        elifList, elseStmt = ctx.elsePart().accept(self)
+        elifList, elseStmt = ctx.elsePart().accept(self) if ctx.elsePart() else ([], None)
         return If(expr=condAst, thenStmt=stmtAst, elifStmt=elifList, elseStmt=elseStmt)
 
     def visitElsePart(self, ctx: ZCodeParser.ElsePartContext):
@@ -192,5 +215,5 @@ class ASTGeneration(ZCodeVisitor):
 
         elifExpr = ctx.expr().accept(self)
         elifBody = ctx.stmt().accept(self)
-        remainingElif, elsePart = ctx.elsePart().accept(self)
+        remainingElif, elsePart = ctx.elsePart().accept(self) if ctx.elsePart() else ([], None)
         return [(elifExpr, elifBody)] + remainingElif, elsePart
