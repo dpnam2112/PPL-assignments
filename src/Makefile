@@ -8,6 +8,7 @@ ANTLR_JAR := $(PROJ_DIR)/antlr-4.9.2-complete.jar
 GRAM_FILE := $(PROJ_DIR)/src/main/zcode/parser/ZCode.g4
 
 RECOGNIZER_SOLUTION_DIR := $(PROJ_DIR)/submit-recognizer
+AST_GEN_SOLUTION_DIR := $(PROJ_DIR)/submit-ast-gen
 
 PYTHON := python3
 
@@ -37,14 +38,19 @@ clean-target:
 # These rules are used to gather all required files for submission.
 submit-recognizer: build-parser
 	mkdir -p $(RECOGNIZER_SOLUTION_DIR)
-	$(PYTHON) run.py gen
 	cp $(PROJ_DIR)/src/main/zcode/parser/ZCode.g4 \
 		$(PROJ_DIR)/src/test/LexerSuite.py \
 		$(PROJ_DIR)/src/test/ParserSuite.py \
 		$(TARGET_DIR)/main/zcode/parser/* \
 		$(RECOGNIZER_SOLUTION_DIR)
 
-submit-ast:
+submit-ast: build-parser
+	mkdir -p $(AST_GEN_SOLUTION_DIR)
+	cp $(PROJ_DIR)/src/main/zcode/parser/ZCode.g4 \
+		$(PROJ_DIR)/src/main/zcode/astgen/ASTGeneration.py \
+		$(PROJ_DIR)/src/test/ASTGenSuite.py \
+		$(TARGET_DIR)/main/zcode/parser/* \
+		$(AST_GEN_SOLUTION_DIR)
 	
 submit-static-checking:
 

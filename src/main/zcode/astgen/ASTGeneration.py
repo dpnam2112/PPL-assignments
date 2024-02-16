@@ -57,9 +57,14 @@ class ASTGeneration(ZCodeVisitor):
 
         # atomicType is number, string, bool or None if the
         # declaration keyword is dynamic or var
-        atomicType = ctx.getChild(0).accept(self)   
-        declType = atomicType if not ctx.arrayDim() else ArrayType(size=ctx.arrayDim().accept(self), eleType=atomicType)
-        return VarDecl(name=iden, varType=declType, varInit=exprAst)
+        varType = ctx.getChild(0).accept(self)   
+        varType = varType if not ctx.arrayDim() else ArrayType(size=ctx.arrayDim().accept(self),
+                                                               eleType=varType)
+        modifier = None
+        modifierKw = ctx.VAR() or ctx.DYNAMIC()
+        if modifierKw:
+            modifier = modifierKw.getText()
+        return VarDecl(name=iden, varType=varType, modifier=modifier, varInit=exprAst)
 
     def visitArrayDim(self, ctx: ZCodeParser.ArrayDimContext):
         return [float(dimLit.getText()) for dimLit in ctx.NUM_LIT()]
@@ -70,7 +75,7 @@ class ASTGeneration(ZCodeVisitor):
     def visitAssignmentStmt(self, ctx: ZCodeParser.AssignmentStmtContext):
         lhs = ctx.ID() or ctx.idIndex()
         expr = ctx.expr()
-        return Assign(lhs=lhs.accept(self), exp=expr.accept(self))
+        return Assign(lhs=lhs.accept(self), rhs=expr.accept(self))
 
     def visitExpr(self, ctx: ZCodeParser.ExprContext):
         leftOp = ctx.relationalExpr(0).accept(self)
@@ -147,27 +152,49 @@ class ASTGeneration(ZCodeVisitor):
 
     def visitTerminal(self, node):
         symtype = node.getSymbol().type
-        match symtype:
-            case ZCodeLexer.STR_LIT:
-                return StringLiteral(value=node.getText())
-            case ZCodeLexer.NUM_LIT:
-                return NumberLiteral(value=float(node.getText()))
-            case ZCodeLexer.TRUE:
-                return BooleanLiteral(value=True)
-            case ZCodeLexer.FALSE:
-                return BooleanLiteral(value=False)
-            case ZCodeLexer.ID:
-                return Id(name=node.getText())
-            case ZCodeLexer.BREAK:
-                return Break()
-            case ZCodeLexer.CONTINUE:
-                return Continue()
-            case ZCodeLexer.NUMBER:
-                return NumberType()
-            case ZCodeLexer.BOOL:
-                return BoolType()
-            case ZCodeLexer.STRING:
-                return StringType()
+#        match symtype:
+#            case ZCodeLexer.STR_LIT:
+#                return StringLiteral(value=node.getText())
+#            case ZCodeLexer.NUM_LIT:
+#                return NumberLiteral(value=float(node.getText()))
+#            case ZCodeLexer.TRUE:
+#                return BooleanLiteral(value=True)
+#            case ZCodeLexer.FALSE:
+#                return BooleanLiteral(value=False)
+#            case ZCodeLexer.ID:
+#                return Id(name=node.getText())
+#            case ZCodeLexer.BREAK:
+#                return Break()
+#            case ZCodeLexer.CONTINUE:
+#                return Continue()
+#            case ZCodeLexer.NUMBER:
+#                return NumberType()
+#            case ZCodeLexer.BOOL:
+#                return BoolType()
+#            case ZCodeLexer.STRING:
+#                return StringType()
+
+        if symtype == ZCodeLexer.STR_LIT:
+            return StringLiteral(value=node.getText())
+        elif symtype == ZCodeLexer.NUM_LIT:
+            return NumberLiteral(value=float(node.getText()))
+        elif symtype == ZCodeLexer.TRUE:
+            return BooleanLiteral(value=True)
+        elif symtype == ZCodeLexer.FALSE:
+            return BooleanLiteral(value=False)
+        elif symtype == ZCodeLexer.ID:
+            return Id(name=node.getText())
+        elif symtype == ZCodeLexer.BREAK:
+            return Break()
+        elif symtype == ZCodeLexer.CONTINUE:
+            return Continue()
+        elif symtype == ZCodeLexer.NUMBER:
+            return NumberType()
+        elif symtype == ZCodeLexer.BOOL:
+            return BoolType()
+        elif symtype == ZCodeLexer.STRING:
+            return StringType()
+
         return None
 
     def visitExprList(self, ctx: ZCodeParser.ExprListContext):
@@ -199,7 +226,7 @@ class ASTGeneration(ZCodeVisitor):
         condExprAst = ctx.expr(0).accept(self)
         updateExprAst = ctx.expr(1).accept(self)
         bodyAst = ctx.stmt().accept(self)
-        return For(name=iden, condExpr=condExprAst, updpExpr=updateExprAst, body=bodyAst)
+        return For(name=iden, condExpr=condExprAst, updExpr=updateExprAst, body=bodyAst)
 
     def visitIfStmt(self, ctx: ZCodeParser.IfStmtContext):
         condAst = ctx.expr().accept(self)

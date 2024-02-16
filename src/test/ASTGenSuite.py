@@ -6,7 +6,7 @@ class ASTGenSuite(unittest.TestCase):
     def test_simple_program(self):
         input = """number a
         """
-        expect = str(Program([VarDecl(Id("a"),NumberType())]))
+        expect = str(Program([VarDecl(Id("a"), NumberType(), None, None)]))
         self.assertTrue(TestAST.test(input,expect,300))
 
     def create_program(self, stmts: list[tuple] = []):
@@ -61,7 +61,7 @@ class ASTGenSuite(unittest.TestCase):
         expr_text, expr_ast = expr
 
         assignment_expr = f"{lhs_text} <- {expr_text}\n"
-        assignment_ast = Assign(lhs=lhs_ast, exp=expr_ast)
+        assignment_ast = Assign(lhs=lhs_ast, rhs=expr_ast)
 
         return (assignment_expr, assignment_ast)
 
@@ -223,6 +223,36 @@ class ASTGenSuite(unittest.TestCase):
                     arr=Id(name="arr"),
                     idx=[ast_7])
 
+        expr_24 = f"abc()"
+        ast_24 = CallExpr(
+                    name=Id(name="abc"),
+                    args=[]
+                )
+
+        expr_25 = "true"
+        ast_25 = BooleanLiteral(value=True)
+
+        expr_26 = "false"
+        ast_26 = BooleanLiteral(value=False)
+
+        expr_27 = '"abc\\f\\n"'
+        ast_27 = StringLiteral(value="abc\\f\\n")
+
+        expr_28 = "23.281e-12"
+        ast_28 = NumberLiteral(value=float("23.281e-12"))
+
+        expr_29 = "true and true or false"
+        ast_29 = BinaryOp(
+                    op="or",
+                    left=BinaryOp(
+                            op="and",
+                            left=BooleanLiteral(value=True),
+                            right=BooleanLiteral(value=True)
+                        ),
+                    right=BooleanLiteral(value=False)
+                )
+
+
         return [
             (expr_1, ast_1),
             (expr_2, ast_2),
@@ -247,6 +277,12 @@ class ASTGenSuite(unittest.TestCase):
             (expr_21, ast_21),
             (expr_22, ast_22),
             (expr_23, ast_23),
+            (expr_24, ast_24),
+            (expr_25, ast_25),
+            (expr_26, ast_26),
+            (expr_27, ast_27),
+            (expr_28, ast_28),
+            (expr_29, ast_29),
         ]
 
     def tc_name_getter(self, prefix: str):
@@ -266,6 +302,7 @@ class ASTGenSuite(unittest.TestCase):
         var_decl = f"var x <- {expr}"
         var_decl_ast = VarDecl(
                             name=Id("x"),
+                            modifier='var',
                             varInit=ast)
 
 
@@ -305,10 +342,12 @@ class ASTGenSuite(unittest.TestCase):
         dynamic_decl = f"dynamic a_var <- {expr}"
         dynamic_decl_ast = VarDecl(
                         name=Id("a_var"),
+                        modifier='dynamic',
                         varInit=ast)
 
         dynamic_decl_no_init = f"dynamic a_var"
         dynamic_decl_no_init_ast = VarDecl(
+                        modifier='dynamic',
                         name=Id("a_var"))
 
         number_arr_decl = f"number x[1, 2, 3] <- {expr}"
@@ -329,6 +368,12 @@ class ASTGenSuite(unittest.TestCase):
                             varType=ArrayType(eleType=StringType(), size=[1.0, 2.0, 3.0]),
                             varInit=ast)
 
+        number_arr_decl_no_init = f"number x[1, 2, 3]"
+        number_arr_decl_no_init_ast = VarDecl(
+                    name=Id("x"),
+                    varType=ArrayType(eleType=NumberType(), size=[1.0, 2.0, 3.0])
+                )
+
         prog = f"""
         {var_decl}
         {number_decl}
@@ -342,6 +387,7 @@ class ASTGenSuite(unittest.TestCase):
         {number_arr_decl}
         {bool_arr_decl}
         {string_arr_decl}
+        {number_arr_decl_no_init}
         """
 
         prog_ast = Program(
@@ -356,7 +402,9 @@ class ASTGenSuite(unittest.TestCase):
                       dynamic_decl_no_init_ast,
                       number_arr_decl_ast,
                       bool_arr_decl_ast,
-                      string_arr_decl_ast])
+                      string_arr_decl_ast,
+                      number_arr_decl_no_init_ast
+                      ])
         res = TestAST.test(prog, str(prog_ast), tc_name_getter())
         self.assertTrue(res)
 
@@ -366,7 +414,7 @@ class ASTGenSuite(unittest.TestCase):
 
         for expr, ast in expr_and_asts:
             decl_stmt = f"var x <- {expr}\n"
-            decl_ast = VarDecl(name=Id("x"), varInit=ast)
+            decl_ast = VarDecl(name=Id("x"), varInit=ast, modifier="var")
             prog_ast = Program(decl=[decl_ast])
             tc_name = tc_name_getter()
 
@@ -414,8 +462,11 @@ class ASTGenSuite(unittest.TestCase):
         # functions with parameter declarations
         param_decl = [
             ("number x", VarDecl(name=Id("x"), varType=NumberType())),
+
             ("bool x", VarDecl(name=Id("x"), varType=BoolType())),
+
             ("string x", VarDecl(name=Id("x"), varType=StringType())),
+
             ("number x[1]", VarDecl(name=Id("x"), varType=ArrayType(eleType=NumberType(),
                                                                     size=[1.0]))),
             ("string x[1, 2]", VarDecl(name=Id("x"),
@@ -454,7 +505,7 @@ class ASTGenSuite(unittest.TestCase):
         loop_stmt = f"for i until {cond[0]} by {update[0]}\n{loop_body[0]}"
 
         loop_ast = For(name=Id("i"), condExpr=cond[1],
-                       updpExpr=update[1], body=loop_body[1])
+                       updExpr=update[1], body=loop_body[1])
 
         prog, prog_ast = self.create_program([loop_body, (loop_stmt, loop_ast)])
         
@@ -465,7 +516,7 @@ class ASTGenSuite(unittest.TestCase):
         loop_with_block = f"for i until {cond[0]} by {update[0]}\n{block}"
 
         loop_with_block_ast = For(name=Id("i"), condExpr=cond[1],
-                       updpExpr=update[1], body=block_ast)
+                       updExpr=update[1], body=block_ast)
 
         prog_2, prog_ast_2 = self.create_program([(loop_with_block, loop_with_block_ast)])
 
@@ -503,6 +554,7 @@ class ASTGenSuite(unittest.TestCase):
     def test_assignment_stmt(self):
         expr, expr_ast = self.expressions_and_asts()[10]
 
+        # left-hand side may be an identifier or an array element
         lhs = [("x", Id("x")), self.expressions_and_asts()[22]]
 
         stmts = []
