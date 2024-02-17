@@ -1,6 +1,8 @@
 {
   "extraPaths" : [
     "./src/main/zcode/astgen",
+    "./src/main/zcode/checker",
+    "./src/main/zcode/codegen",
     "./src/main/zcode/parser",
     "./src/main/zcode/utils",
     "./src/test",
