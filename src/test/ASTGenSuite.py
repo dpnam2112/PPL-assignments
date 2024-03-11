@@ -47,11 +47,11 @@ class ASTGenSuite(unittest.TestCase):
         stmt_ast = If(expr=if_cond[1], thenStmt=if_body[1], elifStmt=[])
 
         for cond, body in zip(conditions[1:], cond_body[1:]):
-            stmt += f"elif ({cond[0]})\n{body[0]}"
+            stmt += f"elif ({cond[0]})\n\t{body[0]}"
             stmt_ast.elifStmt.append((cond[1], body[1]))
 
         if else_body:
-            stmt += f"else\n{else_body[0]}"
+            stmt += f"else\n\t{else_body[0]}"
             stmt_ast.elseStmt = else_body[1]
 
         return (stmt, stmt_ast)
@@ -252,6 +252,11 @@ class ASTGenSuite(unittest.TestCase):
                     right=BooleanLiteral(value=False)
                 )
 
+        expr_30 = f"arr[{expr_6}, {expr_6}, {expr_6}, {expr_6}]"
+        ast_30 = ArrayCell(
+                    arr=Id(name="arr"),
+                    idx=[ast_6, ast_6, ast_6, ast_6])
+
 
         return [
             (expr_1, ast_1),
@@ -283,6 +288,7 @@ class ASTGenSuite(unittest.TestCase):
             (expr_27, ast_27),
             (expr_28, ast_28),
             (expr_29, ast_29),
+            (expr_30, ast_30),
         ]
 
     def tc_name_getter(self, prefix: str):
@@ -439,8 +445,6 @@ class ASTGenSuite(unittest.TestCase):
         return (decl_txt, decl_ast)
 
     def test_function_declaration(self):
-        tc_name_getter = self.tc_name_getter("func_decl_ast")
-
         expr, ast = self.expressions_and_asts()[11]
 
         func_decl_with_no_body = "func main()\n"
@@ -489,9 +493,9 @@ class ASTGenSuite(unittest.TestCase):
     def test_function_call_stmt(self):
         call_no_args = self.create_call_stmt("f", args=[])
 
-        arg = self.expressions_and_asts()[10]
+        args = self.expressions_and_asts()[10:13]
 
-        call_with_args = self.create_call_stmt("abc", [arg, arg, arg])
+        call_with_args = self.create_call_stmt("abc", args)
 
         prog, prog_ast = self.create_program([call_no_args, call_with_args])
 
@@ -546,6 +550,13 @@ class ASTGenSuite(unittest.TestCase):
 
         self.assertTrue(TestAST.test(prog, str(prog_ast), "test_if_stmt_ast"))
 
+        # Ambiguous if statement
+        if_stmt_4 = self.create_if_stmt(conditions=[exprs[0], exprs[1]], cond_body=[if_stmt_2,
+                                                                                   if_stmt_3])
+
+        prog, prog_ast = self.create_program(stmts=[if_stmt_4])
+        self.assertTrue(TestAST.test(prog, str(prog_ast), "test_amb_if_stmt"))
+
 
     def test_loop_ctrl_stmt(self):
         prog, prog_ast = self.create_program(stmts=[('break\n', Break()), ('continue\n', Continue())])
@@ -555,7 +566,7 @@ class ASTGenSuite(unittest.TestCase):
         expr, expr_ast = self.expressions_and_asts()[10]
 
         # left-hand side may be an identifier or an array element
-        lhs = [("x", Id("x")), self.expressions_and_asts()[22]]
+        lhs = [("x", Id("x")), self.expressions_and_asts()[29]]
 
         stmts = []
 
@@ -566,3 +577,22 @@ class ASTGenSuite(unittest.TestCase):
         prog, prog_ast = self.create_program(stmts=stmts)
 
         self.assertTrue(TestAST.test(prog, str(prog_ast), "test_assignment_ast"))
+
+    def test_block_stmt(self):
+        exprs = self.expressions_and_asts()[:3]
+
+        stmts = []
+        for i in range(3):
+            stmts.append(self.create_call_stmt(name="f", args=exprs))
+
+        if_stmt = self.create_if_stmt(conditions=[exprs[0]], cond_body=[stmts[0]],
+                                        else_body=stmts[1])
+
+        stmts.append(if_stmt)
+        stmts.append(('break\n', Break()))
+
+        block, block_ast = self.create_block_stmt(stmts)
+
+        prog, prog_ast = self.create_program(stmts=stmts + [(block, block_ast)])
+
+        self.assertTrue(TestAST.test(prog, str(prog_ast), "test_block"))

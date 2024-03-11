@@ -152,27 +152,6 @@ class ASTGeneration(ZCodeVisitor):
 
     def visitTerminal(self, node):
         symtype = node.getSymbol().type
-#        match symtype:
-#            case ZCodeLexer.STR_LIT:
-#                return StringLiteral(value=node.getText())
-#            case ZCodeLexer.NUM_LIT:
-#                return NumberLiteral(value=float(node.getText()))
-#            case ZCodeLexer.TRUE:
-#                return BooleanLiteral(value=True)
-#            case ZCodeLexer.FALSE:
-#                return BooleanLiteral(value=False)
-#            case ZCodeLexer.ID:
-#                return Id(name=node.getText())
-#            case ZCodeLexer.BREAK:
-#                return Break()
-#            case ZCodeLexer.CONTINUE:
-#                return Continue()
-#            case ZCodeLexer.NUMBER:
-#                return NumberType()
-#            case ZCodeLexer.BOOL:
-#                return BoolType()
-#            case ZCodeLexer.STRING:
-#                return StringType()
 
         if symtype == ZCodeLexer.STR_LIT:
             return StringLiteral(value=node.getText())

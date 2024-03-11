@@ -71,6 +71,8 @@ def main(argv):
             getAndTest(ASTGenSuite)
         elif argv[1] == 'CheckerSuite':
             from CheckerSuite import CheckerSuite
+            from CheckerSuite import TestTypeInference
+            getAndTest(TestTypeInference)
             getAndTest(CheckerSuite)
         elif argv[1] == 'CodeGenSuite':
             from CodeGenSuite import CheckCodeGenSuite
