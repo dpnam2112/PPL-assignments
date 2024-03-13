@@ -87,7 +87,7 @@ class ASTGeneration(ZCodeVisitor):
 
     def visitRelationalExpr(self, ctx: ZCodeParser.RelationalExprContext):
         leftOpAst = ctx.boolExpr(0).accept(self)
-        op = ctx.LT() or ctx.GT() or ctx.LT_EQ() or ctx.GT_EQ() or ctx.EQ() or ctx.EQ_EQ()
+        op = ctx.LT() or ctx.GT() or ctx.LT_EQ() or ctx.GT_EQ() or ctx.EQ() or ctx.EQ_EQ() or ctx.NOT_EQ()
         if not op:
             return leftOpAst
         rightOpAst = ctx.boolExpr(1).accept(self)
