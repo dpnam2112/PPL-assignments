@@ -19,7 +19,7 @@ class TypePlaceholder:
         return f"${self.type_id}"
 
 class FnType(Type):
-    def __init__(self, arg_types: list[Type], return_type: Type | TypePlaceholder):
+    def __init__(self, arg_types: list[Type], return_type: Type | TypePlaceholder | None):
         self.argTypes = arg_types
         self.returnType = return_type
 
@@ -32,8 +32,8 @@ class TypeEnvironment:
         scope = self.getCurrentScope()
         scope[name] = var_type
 
-    def isDeclared(self, name):
-        return self.getType(name) != None
+    def isInCurrentScope(self, name):
+        return name in self.scopes[-1]
 
     def getType(self, name):
         for scope in reversed(self.scopes):
@@ -42,6 +42,11 @@ class TypeEnvironment:
             except KeyError:
                 continue
         return None
+
+    def setType(self, name, var_type):
+        scope = self.getCurrentScope()
+        assert name in scope
+        scope[name] = var_type
 
     def beginScope(self):
         self.scopes.append(dict())
@@ -62,24 +67,31 @@ def getTypeAnnotation(ast):
 
 def getExpressionType(ast):
     expr_type = getTypeAnnotation(ast)
-    if isinstance(expr_type, ArrayType) and isinstance(expr_type.eleType, TypePlaceholder):
-        return ArrayType(eleType=expr_type.eleType.getType(), size=expr_type.size)
-    if isinstance(expr_type, Type):
-        return expr_type
-    if isinstance(expr_type, TypePlaceholder):
-        return expr_type.getType()
+    return unwrapTypeVar(expr_type)
+
+def unwrapTypeVar(t):
+    if isinstance(t, ArrayType) and isinstance(t.eleType, TypePlaceholder):
+        return ArrayType(eleType=unwrapTypeVar(t.eleType), size=t.size)
+    if isinstance(t, Type):
+        return t
+    if isinstance(t, TypePlaceholder):
+        return unwrapTypeVar(t.getType())
 
 
 def isValidArrayType(t):
     return isinstance(t, ArrayType) and t.size != []
 
 def compatibleTypes(lhs_type, rhs_type):
+    # Type variable can be any type
+    if isinstance(lhs_type, TypePlaceholder):
+        return True if lhs_type.getType() is None else compatibleTypes(lhs_type.getType(), rhs_type)
+
     if lhs_type.__class__ != rhs_type.__class__:
         return False
 
     if isinstance(lhs_type, ArrayType):
         return (lhs_type.eleType.__class__ == rhs_type.eleType.__class__
                 and len(lhs_type.size) == len(rhs_type.size)
-                and all([i == j for i, j in zip(lhs_type.size, rhs_type.size)]))
+                and all([i >= j for i, j in zip(lhs_type.size, rhs_type.size)]))
 
     return True

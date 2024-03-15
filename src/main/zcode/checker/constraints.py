@@ -121,17 +121,29 @@ class ConstraintResolver:
         elif not containTypeVar(rhs):
             lhs_type_var = lhs if not isinstance(lhs, ArrayType) else lhs.eleType
             lhs_type_var.setType(rhs)
-        else:
-            rhs_type_var = rhs if not isinstance(rhs, ArrayType) else rhs.eleType
-            lhs_type_var = lhs if not isinstance(lhs, ArrayType) else lhs.eleType
-
-            unified = rhs_type_var.getType() or lhs_type_var.getType()
+        elif isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
+            lhs_ele_type, rhs_ele_type = lhs.eleType, rhs.eleType
+            unified = lhs_ele_type.getType() or rhs_ele_type.getType()
+            
             if not unified:
                 return unified
 
-            rhs_type_var.setType(unified)
-            lhs_type_var.setType(unified)
+            lhs_ele_type.setType(unified)
+            rhs_ele_type.setType(unified)
+        elif isinstance(lhs, ArrayType):
+            rhs.setType(lhs)
+        elif isinstance(rhs, ArrayType):
+            lhs.setType(rhs)
+        elif isinstance(lhs, TypePlaceholder) and isinstance(rhs, TypePlaceholder):
+            unified = lhs.getType() or rhs.getType()
 
+            if not unified:
+                return unified
+
+            lhs.setType(unified)
+            rhs.setType(unified)
+
+        # indicate that constraint is resolved successfully
         return True
 
 class ConstraintCollector(BaseVisitor):
@@ -191,9 +203,10 @@ class ConstraintCollector(BaseVisitor):
 
         if ast.varInit:
             expr_type = getTypeAnnotation(ast.varInit)
-            self.addConstraint(var_type, expr_type)
-            if ast.varType and isinstance(expr_type, ArrayType) and isinstance(ast.varType, ArrayType):
+            if isinstance(expr_type, ArrayType) and isinstance(ast.varType, ArrayType):
                 self.addConstraint(expr_type.eleType, ast.varType.eleType)
+            else:
+                self.addConstraint(var_type, expr_type)
 
     def visitAssign(self, ast: Assign, param):
         ast.rhs.accept(self, None)
@@ -243,6 +256,7 @@ class ConstraintCollector(BaseVisitor):
             self.addConstraint(getTypeAnnotation(expr), param_type)
 
         self.addConstraint(fn_type.returnType, VoidType())
+        annotateType(ast, fn_type.returnType)
 
     def visitFuncDecl(self, ast: FuncDecl, param):
         if self.defined(ast.name.name):
@@ -266,6 +280,8 @@ class ConstraintCollector(BaseVisitor):
         self.typeEnv.declare(ast.name.name, fn_type)
         annotateType(ast.name, fn_type)
 
+        self.currentFn = ast.name.name
+
         self.typeEnv.beginScope()
         for decl in ast.param:
             decl.accept(self, None)
@@ -275,7 +291,6 @@ class ConstraintCollector(BaseVisitor):
             self.defineFunction(ast.name.name)
 
         self.typeEnv.endScope()
-
 
     def visitBlock(self, ast: Block, param):
         self.typeEnv.beginScope()
@@ -290,12 +305,15 @@ class ConstraintCollector(BaseVisitor):
         if not fn_type:
             return
 
-        self.addConstraint(fn_type.returnType, getTypeAnnotation(ast.expr))
+        if ast.expr:
+            ast.expr.accept(self, None)
+            self.addConstraint(fn_type.returnType, getTypeAnnotation(ast.expr))
+        else:
+            self.addConstraint(fn_type.returnType, VoidType())
 
     def visitBinaryOp(self, ast: BinaryOp, param):
         ast.left.accept(self, ast.op)
         ast.right.accept(self, ast.op)
-
 
         self.addConstraint(getTypeAnnotation(ast.left), getOperandType(ast.op))
         self.addConstraint(getTypeAnnotation(ast.right), getOperandType(ast.op))
@@ -385,7 +403,6 @@ class ConstraintCollector(BaseVisitor):
         annotateType(ast, StringType())
 
     def addConstraint(self, lhs, rhs):
-        constraint = Constraint(lhs, rhs, self.constraintCount) 
+        constraint = Constraint(lhs, rhs, len(self.constraints)) 
         self.constraints.append(constraint)
-        self.constraintCount += 1
         return constraint

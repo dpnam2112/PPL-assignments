@@ -282,12 +282,11 @@ class BoolType(Type):
 class StringType(Type):
     def __str__(self):
         return "StringType"
-
-
+    
+    
 class VoidType(Type):
     def __str__(self):
         return "VoidType"
-
 
 class ArrayType(Type):
     # size: List[float]
