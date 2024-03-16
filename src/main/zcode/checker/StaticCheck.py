@@ -291,9 +291,13 @@ class StaticChecker(BaseVisitor, Utils):
         else:
             # rhs's type is not inferred. Proceed to infer the lhs's type.
             # if the type of lhs still cannot be inferred, raise the exception.
-            ast.lhs.accept(self, None)
-            if not self.typeConstraints[-1].getType():
-                raise TypeCannotBeInferred(ast)
+            try:
+                ast.lhs.accept(self, None)
+#                if not self.typeConstraints[-1].getType():
+#                    raise TypeCannotBeInferred(ast)
+            except TypeCannotBeInferred as e:
+                e.stmt = ast
+                raise e
 
             self.typeConstraints[-1] = self.typeConstraints[-1].getType()
             try:
@@ -370,6 +374,7 @@ class StaticChecker(BaseVisitor, Utils):
         # So, we cannot infer the type of the array in this case. The 'invalid array' (its size is
         # empty) is pushed to the list of constraints so the checker can use it to determine if it
         # is able to infer the type of a variable or the return type of a function.
+
         self.typeConstraints.append(ArrayType(eleType=self.typeConstraints[-1], size=[]))
         if not ast.arr.accept(self, None):
             # Determine whether the type mismatch occurred in the index expression, or in the
@@ -386,8 +391,8 @@ class StaticChecker(BaseVisitor, Utils):
 
             self.typeConstraints.pop()
             return False
-
         self.typeConstraints.pop()
+
         return True
 
     def visitCallStmt(self, ast: CallStmt, param):
@@ -400,7 +405,7 @@ class StaticChecker(BaseVisitor, Utils):
         if (not isinstance(fn_type, FnType) 
             or len(ast.args) != len(fn_type.argTypes)
             or not (fn_type.returnType is None or isinstance(fn_type.returnType, VoidType))):
-            raise TypeMismatchInExpression(ast)
+            raise TypeMismatchInStatement(ast)
 
         if not fn_type.returnType:
             fn_type.returnType = VoidType()
@@ -467,6 +472,16 @@ class StaticChecker(BaseVisitor, Utils):
 
             fn_type.returnType = return_type_constr
 
+        if isinstance(return_type_constr, TypePlaceholder):
+            return_type_constr.setType(fn_type.returnType)
+
+        if isinstance(return_type_constr, ArrayType) and return_type_constr.size == [] and isinstance(fn_type.returnType, ArrayType):
+
+            if isinstance(return_type_constr.eleType, TypePlaceholder):
+                return_type_constr.eleType.setType(fn_type.returnType.eleType)
+
+            return compatibleTypes(return_type_constr.eleType, fn_type.returnType.eleType)
+        
         return compatibleTypes(return_type_constr, fn_type.returnType)
 
     def visitBlock(self, ast: Block, param):
@@ -667,6 +682,10 @@ class StaticChecker(BaseVisitor, Utils):
         if isinstance(type_constr, ArrayType) and isinstance(id_type, ArrayType) and type_constr.size == []:
             # this code is used for cases that we only need to ensure that a function call or
             # identifier just returns an array, regardless of its size.
+            if isinstance(type_constr.eleType, TypePlaceholder):
+                # resolve the type constraint of the index expression
+                type_constr.eleType.setType(id_type.eleType)
+
             return compatibleTypes(type_constr.eleType, id_type.eleType)
 
         if isinstance(type_constr, TypePlaceholder):

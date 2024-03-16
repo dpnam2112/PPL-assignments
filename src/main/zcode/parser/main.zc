@@ -1,6 +1,13 @@
-        var x <- 1
-        dynamic y <- 1 + 2.3 * 3E5
-        number x <- f(1, 2)
-        bool x <- true and false or f(1, 2)
-        number x <- (1 + 2.3 * 3E5) - 1 + f(1, 2)
+func main()
+begin
+if (1)
+	if (2)
+		print("abc")
+	elif (3)
+		print("def")
+	else
+		print("")
+elif (2)
+	print("abc")
+end
 

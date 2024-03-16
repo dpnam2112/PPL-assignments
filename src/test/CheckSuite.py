@@ -664,7 +664,7 @@ class CheckSuite(unittest.TestCase):
         expect = str(Redeclared(Parameter(), 'y'))
         self.assertTrue(TestChecker.test(inp, expect, "redeclared_parameter_1"))
 
-    def _test_type_inference_from_param_types(self):
+    def test_type_inference_from_param_types(self):
         inp = """
         func f(number a, number b)
         func main() begin
@@ -689,7 +689,7 @@ class CheckSuite(unittest.TestCase):
         expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_inf_from_param_1"))
 
-    def _test_function_type_inference(self):
+    def test_function_type_inference(self):
         inp = """
         func f() return 1
         func main() begin
@@ -884,9 +884,7 @@ class CheckSuite(unittest.TestCase):
             bool y <- x[0] and true
         end
         """
-        expect = str(TypeMismatchInExpression(BinaryOp('and', ArrayCell(Id('x'),
-                                                                [NumberLiteral(0.0)]),
-                                                               BooleanLiteral(True))))
+        expect = str(TypeMismatchInExpression(BinaryOp('and', ArrayCell(Id('x'), [NumberLiteral(0.0)]), BooleanLiteral(True))))
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_2"))
 
         inp = """
@@ -923,12 +921,8 @@ class CheckSuite(unittest.TestCase):
             bool y <- s[0, 0, 0] == n[0]
         end
         """
-        expect = TypeMismatchInExpression(BinaryOp('==', ArrayCell(Id('s'),
-                                                                   [NumberLiteral(0.0),
-                                                                    NumberLiteral(0.0),
-                                                                    NumberLiteral(0.0)]),
-                                                                   ArrayCell(Id('n'),
-                                                                             [NumberLiteral(0.0)])))
+        expect = TypeMismatchInExpression(BinaryOp('==', ArrayCell(Id('s'), [NumberLiteral(0.0), NumberLiteral(0.0), NumberLiteral(0.0)]),
+                                                                   ArrayCell(Id('n'), [NumberLiteral(0.0)])))
         expect = str(expect)
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_6"))
 
@@ -986,11 +980,7 @@ class CheckSuite(unittest.TestCase):
             var x <- f()[0] = 1
         end
         """
-        expect = str(TypeMismatchInExpression(BinaryOp('=',
-                                                       ArrayCell(CallExpr(Id('f'),
-                                                                          []),
-                                                                      [NumberLiteral(0.0)]),
-                                                       NumberLiteral(1.0))))
+        expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_12"))
 
         inp = """
@@ -1003,6 +993,24 @@ class CheckSuite(unittest.TestCase):
         """
         expect = str(TypeMismatchInExpression(UnaryOp('-', CallExpr(Id('f'), []))))
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_13"))
+
+        inp = """
+        func main() begin
+            number x
+            bool y
+            var z <- x or y
+        end
+        """
+        expect = str(TypeMismatchInExpression(BinaryOp('or', Id('x'), Id('y'))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_14"))
+
+        inp = """
+        func main() begin
+            var z <- not (1 + 2)
+        end
+        """
+        expect = str(TypeMismatchInExpression(UnaryOp('not', BinaryOp('+', NumberLiteral(1.0), NumberLiteral(2.0)))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_15"))
 
     def test_type_mismatch_in_stmt(self):
         inp = """
@@ -1038,17 +1046,234 @@ class CheckSuite(unittest.TestCase):
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_1"))
 
         inp = """
-        func f() return
         func main() begin
             dynamic x
             x <- "abc"
-
             for x until true by 1 begin
-                f()
             end
         end
         """
-        loop_body = Block([CallStmt(Id('f'), [])])
-        expect = str(TypeMismatchInStatement(For(Id('x'), BooleanLiteral(True),
-                                                 NumberLiteral(1.0), loop_body)))
+        expect = str(TypeMismatchInStatement(For(Id('x'), BooleanLiteral(True), NumberLiteral(1.0), Block([]))))
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_2"))
+
+        inp = """
+        func f() return "abc"
+        func g() return
+        func main() begin
+            if (f()) begin
+                g()
+            end
+        end
+        """
+        if_stmt = If(CallExpr(Id('f'), []), Block([CallStmt(Id('g'), [])]))
+        expect = str(TypeMismatchInStatement(if_stmt))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_3"))
+
+        inp = """
+        func f() return "abc"
+        func g() return
+        func main() begin
+            dynamic x
+            if (x) g()
+            elif(f()) g()
+        end
+        """
+        if_stmt = If(Id('x'), CallStmt(Id('g'), []), [(CallExpr(Id('f'), []), CallStmt(Id('g'), []))])
+        expect = str(TypeMismatchInStatement(if_stmt))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_4"))
+
+        inp = """
+        func f1() return true
+        func f() return false and false or f1()
+        func g() return
+        func main() begin
+            dynamic x
+            if (x) g()
+            elif (f()) g()
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_5"))
+
+        inp = """
+        func f(bool x) return [1, 2, 3, 4, 5]
+        func g() return
+        func main() begin
+            dynamic x
+            if (x) g()
+            elif (f(x)) g()
+        end
+        """
+        if_stmt = If(Id('x'), CallStmt(Id('g'), []), [(CallExpr(Id('f'), [Id('x')]), CallStmt(Id('g'), []))])
+        expect = str(TypeMismatchInStatement(if_stmt))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_6"))
+
+        inp = """
+        func f(bool x) return [x, x, x]
+        func g() return
+        func main() begin
+            dynamic arr <- f(true)
+            dynamic x
+            if (arr[0]) g()
+            elif (arr[1]) g()
+            elif (arr[x + x] and arr[x - x]) g()
+            else g()
+
+            for x until arr[0] and arr[1] or arr[x * x] by x
+                g()
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_7"))
+
+        inp = """
+        func f(string x) return [x, x, x]
+        func main() begin
+            var arr <- f("abc")
+            dynamic x
+            for x until arr[0] by 1
+            begin
+            end
+        end
+        """
+        for_stmt = For(Id('x'), ArrayCell(Id('arr'), [NumberLiteral(0.0)]), NumberLiteral(1.0), Block([]))
+        expect = str(TypeMismatchInStatement(for_stmt))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_8"))
+
+
+        inp = """
+        func f(string x) return [x, x, x]
+        func g(number x) return [x, x, x]
+        func main() begin
+            var arr <- f("abc")
+            dynamic x
+            for x until g(x)[x * 2] by arr[0]
+            begin
+            end
+        end
+        """
+        stop_cond = ArrayCell(CallExpr(Id('g'), [Id('x')]), [BinaryOp('*', Id('x'), NumberLiteral(2.0))])
+        for_stmt = For(Id('x'), stop_cond, ArrayCell(Id('arr'), [NumberLiteral(0.0)]), Block([]))
+        expect = str(TypeMismatchInStatement(for_stmt))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_9"))
+
+        inp = """
+        func f(number x, number y, number z) return x + y * z
+        func main() begin
+            dynamic x
+            dynamic y
+            dynamic z
+
+            f(x, y, z)
+        end
+        """
+        expect = str(TypeMismatchInStatement(CallStmt(Id('f'), [Id('x'), Id('y'), Id('z')])))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_10"))
+
+        inp = """
+        func f(number x[100]) return x
+        func main() begin
+            number x[100]
+            x <- f(x)
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_11"))
+
+        inp = """
+        func f() begin
+            number x[100]
+            return x
+        end
+
+        func g() return 1
+
+        func main() begin
+            number y
+            y <- f()[f()[0] + 1 * g() / f()[2]]
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_12"))
+
+        inp = """
+        func main() begin
+            number x[100]
+            bool y[100]
+            x[2] <- y[1] 
+        end
+        """
+        expect = str(TypeMismatchInStatement(Assign(ArrayCell(Id('x'), [NumberLiteral(2.0)]), ArrayCell(Id('y'), [NumberLiteral(1.0)]))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_13"))
+
+        inp = """
+        func f() return [1, 2, 3, 4, 5]
+        func main() begin
+            bool x[100]
+            x[0] <- f()[1]
+        end
+        """
+        expect = str(TypeMismatchInStatement(Assign(ArrayCell(Id('x'), [NumberLiteral(0.0)]), ArrayCell(CallExpr(Id('f'), []), [NumberLiteral(1.0)]))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_14"))
+
+        inp = """
+        func f() return [1, 2, 3, 4, 5]
+        func main() begin
+            dynamic x
+            x <- f()[1]
+            bool y
+            x <- y
+        end
+        """
+        expect = str(TypeMismatchInStatement(Assign(Id('x'), Id('y'))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_15"))
+
+        inp = """
+        func f() return [[1, 2], [1, 2], [3 * 2 - 5, 4 * 1 + 4]]
+        func main() begin
+            dynamic x
+            x <- f()
+            dynamic y
+            y <- x[0, 1 * 2 + 3]
+            bool z
+            z <- y
+        end
+        """
+        expect = str(TypeMismatchInStatement(Assign(Id('z'), Id('y'))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_16"))
+
+
+    def test_type_inference_from_expression(self):
+        inp = """
+        func main() begin
+            dynamic x
+            dynamic y
+
+            var z <- x % y + (x * y) - (x / y)
+            dynamic y1
+            dynamic y2
+
+            var y3 <- not y2 and not y1 and (y1 or y2) and (x != y)
+
+            dynamic x1
+            dynamic x2
+            dynamic x3
+
+            var x4 <- ((x1 ... x2) == "abc") and (x2 == "def") or (x1 == "ghi")
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_from_expression"))
+
+    def test_single_tc(self):
+        inp = """
+        func f() return [1, 2, 3, 4, 5]
+        func main() begin
+            dynamic x
+            x <- f()[1]
+            bool y
+            x <- y
+        end
+        """
+        expect = str(TypeMismatchInStatement(Assign(Id('x'), Id('y'))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_15"))
