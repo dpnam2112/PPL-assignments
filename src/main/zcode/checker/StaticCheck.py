@@ -21,7 +21,7 @@ class TypePlaceholder:
         return f"${self.type_id}"
 
 class FnType(Type):
-    def __init__(self, arg_types: list[Type], return_type: Type | TypePlaceholder | None):
+    def __init__(self, arg_types, return_type):
         self.argTypes = arg_types
         self.returnType = return_type
 
@@ -89,6 +89,53 @@ def getResultType(op):
     return StringType()
 
 class StaticChecker(BaseVisitor, Utils):
+    """Static checker is used to check if the input program satisfies all semantic constraints
+    defined by the ZCode programming language.
+
+    While checking, it also has to infer types of all unknown-type variables. For instance:
+    ========== Example snippet ==========
+    dynamic x
+    number y
+    x <- y
+    ========== Example snippet ==========
+    In the above example, the static checker has to infer the type of 'x'. From the declaration of
+    'y' and the assignment statement, so the checker can conclude that the type of 'x' must be
+    number.
+
+    The strategy used by the checker is as follows: It uses a stack represented by a list to
+    store all the constraints for expressions. Whenever the checker visits an expression, it peeks
+    the top constraint in the stack, and compare the return type of the expression (which can be deduced 
+    from the operator, e.g, result of an addition expression must have return a number) with the 
+    constraint. If the constraint is satisfied, it proceeds to add the constraints for the
+    expression's operands and visit these operands. If all of the constraints for operands are
+    satisfied, the visit function returns True to indicate that the expression satisfies the
+    constraint.
+
+    For example, in this expression:
+    number x <- a + b
+    In this context, types of a and b haven't been deduced yet. The visitor visits the declaration
+    and add the type constraint:
+    [number]
+    This means that, the initialization expression must return a number.
+    Next, it proceeds to visit the initialization expression. It compares the return type of '+'
+    with the top constraint in the stack:
+    number = number
+    So, the return type constraint is satisfied. Note that, if the return type constraint were not
+    satisfied in this case, then the visitor would return false.
+    The operands' types of '+' must be numbers, so the checker pushes a constraint to the stack:
+    [number, number]
+    Then, it visits each operand. the type of x hasn't been inferred yet, so we use the return
+    type constraint to infer its type. The type of 'x' must be number. The checker does the same thing
+    for 'b', and it infers that b's type must be number too.
+
+    For some cases, we cannot infer the type of a variable from the expression. For example:
+    ========== Example snippet ==========
+    dynamic x
+    number y <- x[10]
+    ========== Example snippet ==========
+    This case is ambiguous. Although we know that x is an array of numbers, but what about its size?
+    The checker raises an exception if it encounters such cases.
+    """
     def __init__(self, prog: Program):
         self.prog = prog
         self.typeEnv = TypeEnvironment()
@@ -114,7 +161,13 @@ class StaticChecker(BaseVisitor, Utils):
             raise NoEntryPoint()
 
         main_decl = self.funcDecls['main']
-        if not (main_decl and main_decl.param == [] and main_decl.body):
+        main_fn_type = self.typeEnv.getType('main')
+
+#        if not (main_decl and main_decl.param == [] and main_decl.body and ):
+#            raise NoEntryPoint()
+
+        if not (main_fn_type and isinstance(main_fn_type, FnType) and
+                isinstance(main_fn_type.returnType, VoidType) and main_fn_type.argTypes == []):
             raise NoEntryPoint()
 
     def setCurrentFnName(self, name: str):
@@ -140,8 +193,7 @@ class StaticChecker(BaseVisitor, Utils):
         # also need to check if the previous declaration has a body.
         prev_decl = self.funcDecls[fn_name]
 
-        if(prev_decl.body or not ast.body
-                             or len(prev_decl.param) != len(ast.param)):
+        if(prev_decl.body or not ast.body or len(prev_decl.param) != len(ast.param)):
             return True
 
         return not all([compatibleTypes(pair[0].varType, pair[1].varType)
@@ -173,12 +225,25 @@ class StaticChecker(BaseVisitor, Utils):
                     )
             self.typeEnv.declare(fn_name, fn_type)
 
+
         self.funcDecls[fn_name] = ast
 
         self.setCurrentFnName(fn_name)
         self.beginScope()
+        for param_decl in ast.param:
+            try:
+                param_decl.accept(self, None)
+            except Redeclared as exception:
+                exception.kind = Parameter()
+                raise exception
+
+        self.beginScope()
         if ast.body:
             ast.body.accept(self, None)
+            if not fn_type.returnType:
+                fn_type.returnType = VoidType()
+
+        self.endScope()
         self.endScope()
 
     def visitVarDecl(self, ast: VarDecl, param):
@@ -212,7 +277,8 @@ class StaticChecker(BaseVisitor, Utils):
             ast.rhs.accept(self, None)
         except TypeCannotBeInferred as exception:
             if (exception.stmt == ast.rhs 
-                and not isinstance(exception.stmt, Id)):
+                and not (isinstance(exception.stmt, Id)
+                         or isinstance(exception.stmt, CallExpr))):
                 raise TypeCannotBeInferred(ast)
 
         if self.typeConstraints[-1].getType():
@@ -291,9 +357,37 @@ class StaticChecker(BaseVisitor, Utils):
                 raise TypeMismatchInExpression(ast)
         self.typeConstraints.pop()
 
+        # We cannot conclude that a variable of unknown type is an array if the variable is used
+        # in an index expression.
+        # for example, this case is ambiguous:
+        # ======================================
+        # dynamic x
+        # number y <- x[1, 2, 3]
+        # ======================================
+        # Although we can infer the type of x[1, 2, 3], but what about x? It is for sure an array of
+        # number, but what is its size? [4, 4, 4]? [10, 10, 10]?
+        #
+        # So, we cannot infer the type of the array in this case. The 'invalid array' (its size is
+        # empty) is pushed to the list of constraints so the checker can use it to determine if it
+        # is able to infer the type of a variable or the return type of a function.
         self.typeConstraints.append(ArrayType(eleType=self.typeConstraints[-1], size=[]))
-        ast.arr.accept(self, None)
+        if not ast.arr.accept(self, None):
+            # Determine whether the type mismatch occurred in the index expression, or in the
+            # upper expression
+            if isinstance(ast.arr, Id):
+                arr_name = ast.arr.name
+                if not isinstance(self.typeEnv.getType(arr_name), ArrayType):
+                    raise TypeMismatchInExpression(ast)
+            elif isinstance(ast.arr, CallExpr):
+                fn_name = ast.arr.name.name
+                fn_type = self.typeEnv.getType(fn_name)
+                if not isinstance(fn_type.returnType, ArrayType):
+                    raise TypeMismatchInExpression(ast)
 
+            self.typeConstraints.pop()
+            return False
+
+        self.typeConstraints.pop()
         return True
 
     def visitCallStmt(self, ast: CallStmt, param):
@@ -311,11 +405,13 @@ class StaticChecker(BaseVisitor, Utils):
         if not fn_type.returnType:
             fn_type.returnType = VoidType()
 
-        for arg_type, arg_expr in zip(fn_type.argTypes, ast.args):
-            self.typeConstraints.append(arg_type)
-            if not arg_expr.accept(self, None):
-                raise TypeMismatchInExpression(ast)
-            self.typeConstraints.pop()
+        try:
+            for arg_type, arg_expr in zip(fn_type.argTypes, ast.args):
+                self.typeConstraints.append(arg_type)
+                if not arg_expr.accept(self, None):
+                    raise TypeMismatchInExpression(ast)
+        except TypeCannotBeInferred:
+            raise TypeCannotBeInferred(ast)
 
     def visitCallExpr(self, ast: CallExpr, param):
         fn_name = ast.name.name
@@ -324,7 +420,9 @@ class StaticChecker(BaseVisitor, Utils):
         if not fn_type:
             raise Undeclared(Function(), fn_name)
 
-        if not isinstance(fn_type, FnType) or len(ast.args) != len(fn_type.argTypes):
+        if (not isinstance(fn_type, FnType) 
+            or len(ast.args) != len(fn_type.argTypes) 
+            or isinstance(fn_type.returnType, VoidType)):
             raise TypeMismatchInExpression(ast)
 
         for arg_type, arg_expr in zip(fn_type.argTypes, ast.args):
@@ -335,19 +433,41 @@ class StaticChecker(BaseVisitor, Utils):
 
         return_type_constr = self.typeConstraints[-1]
 
-        if isinstance(return_type_constr, ArrayType):
-            if not fn_type.returnType:
-                raise TypeCannotBeInferred(ast)
-
-            return isinstance(fn_type.returnType, ArrayType)
-
-        if isinstance(return_type_constr, TypePlaceholder):
-            raise TypeCannotBeInferred(ast)
+#        if isinstance(return_type_constr, ArrayType):
+#            if not fn_type.returnType and return_type_constr.size == []:
+#                raise TypeCannotBeInferred(ast)
+#
+#            # fn_type.returnType, size == [] -> TypeMismatch
+#            # not fn_type.returnType, size != [] -> type infer, return True
+#            # fn_type.returnType, size != [] -> TypeMismatch
+#
+#            if not fn_type.returnType and return_type_constr.size != []:
+#                fn_type.returnType = return_type_constr
+#
+#            return isinstance(fn_type.returnType, ArrayType)
+#
+#        if not fn_type.returnType and isinstance(return_type_constr, TypePlaceholder):
+#            # both function type and the constraint are not inferred
+#            raise TypeCannotBeInferred(ast)
+#
+#        if fn_type.returnType and isinstance(return_type_constr, TypePlaceholder):
+#            # the constraint is not inferred, infer the constraint from the function type
+#            return_type_constr.setType(fn_type.returnType)
+#        elif not fn_type.returnType and not isinstance(return_type_constr, TypePlaceholder):
+#            # function type is not inferred, infer from the constraint
+#            fn_type.returnType = return_type_constr
 
         if not fn_type.returnType:
+            # infer function's return type
+            if (isinstance(return_type_constr, ArrayType) and return_type_constr.size == []):
+                raise TypeCannotBeInferred(ast)
+
+            if isinstance(return_type_constr, TypePlaceholder) and not return_type_constr.getType():
+                raise TypeCannotBeInferred(ast)
+
             fn_type.returnType = return_type_constr
 
-        return compatibleTypes(return_type_constr, fn_type)
+        return compatibleTypes(return_type_constr, fn_type.returnType)
 
     def visitBlock(self, ast: Block, param):
         self.beginScope()
@@ -358,13 +478,21 @@ class StaticChecker(BaseVisitor, Utils):
     def visitIf(self, ast: If, param):
         self.typeConstraints.append(BoolType())
 
-        if not ast.expr.accept(self, None):
-            raise TypeMismatchInStatement(ast)
+        try:
+            if not ast.expr.accept(self, None):
+                raise TypeMismatchInStatement(ast)
+        except TypeCannotBeInferred:
+            raise TypeCannotBeInferred(ast)
+
         ast.thenStmt.accept(self, None)
 
         for cond, block in ast.elifStmt:
-            if not cond.accept(self, None):
-                raise TypeMismatchInStatement(ast)
+            try:
+                if not cond.accept(self, None):
+                    raise TypeMismatchInStatement(ast)
+            except TypeCannotBeInferred:
+                raise TypeCannotBeInferred(ast)
+
             block.accept(self, None)
 
         if ast.elseStmt:
@@ -374,11 +502,46 @@ class StaticChecker(BaseVisitor, Utils):
 
     def visitFor(self, ast: For, param):
         self.inLoop = True
+        try:
+            self.typeConstraints.append(NumberType())
+            if not ast.name.accept(self, None):
+                raise TypeMismatchInStatement(ast)
+            self.typeConstraints.append(BoolType())
+            if not ast.condExpr.accept(self, None):
+                raise TypeMismatchInStatement(ast)
+            self.typeConstraints.append(NumberType())
+            if not ast.updExpr.accept(self, None):
+                raise TypeMismatchInStatement(ast)
+        except TypeCannotBeInferred:
+            raise TypeCannotBeInferred(ast)
+
+        self.typeConstraints = self.typeConstraints[:-3]
         ast.body.accept(self, None)
         self.inLoop = False
 
     def visitReturn(self, ast: Return, param):
-        pass
+        fn_name = self.getCurrentFnName()
+        fn_type = self.typeEnv.getType(fn_name)
+
+        assert isinstance(fn_type, FnType)
+
+        if not ast.expr:
+            if not fn_type.returnType:
+                fn_type.returnType = VoidType()
+            elif not isinstance(fn_type, VoidType):
+                raise TypeMismatchInStatement(ast)
+        else:
+            self.typeConstraints.append(fn_type.returnType or TypePlaceholder())
+
+            try:
+                if not ast.expr.accept(self, None):
+                    raise TypeMismatchInStatement(ast)
+            except TypeCannotBeInferred:
+                raise TypeCannotBeInferred(ast)
+
+            return_type = self.typeConstraints.pop()
+            if isinstance(return_type, TypePlaceholder):
+                fn_type.returnType = return_type.getType()
 
     def visitArrayLiteral(self, ast: ArrayLiteral, param):
         assert ast.value != []
@@ -485,11 +648,11 @@ class StaticChecker(BaseVisitor, Utils):
 
         if isinstance(id_type, TypePlaceholder):
             # Infer type of the identifier
-            # We cannot infer a variable to an array type.
             if (self.typeConstraints == [] or isinstance(self.typeConstraints[-1],
                                                          TypePlaceholder)):
                 raise TypeCannotBeInferred(ast)
 
+            # Invalid array constraint is pushed when the index expression is visited.
             if isinstance(self.typeConstraints[-1], ArrayType) and self.typeConstraints[-1].size == []:
                     raise TypeCannotBeInferred(ast)
 
@@ -503,7 +666,7 @@ class StaticChecker(BaseVisitor, Utils):
 
         if isinstance(type_constr, ArrayType) and isinstance(id_type, ArrayType) and type_constr.size == []:
             # this code is used for cases that we only need to ensure that a function call or
-            # identifier returns an array.
+            # identifier just returns an array, regardless of its size.
             return compatibleTypes(type_constr.eleType, id_type.eleType)
 
         if isinstance(type_constr, TypePlaceholder):

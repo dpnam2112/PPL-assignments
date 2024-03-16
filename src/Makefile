@@ -9,6 +9,7 @@ GRAM_FILE := $(PROJ_DIR)/src/main/zcode/parser/ZCode.g4
 
 RECOGNIZER_SOLUTION_DIR := $(PROJ_DIR)/submit-recognizer
 AST_GEN_SOLUTION_DIR := $(PROJ_DIR)/submit-ast-gen
+CHECKER_SOLUTION_DIR := $(PROJ_DIR)/submit-checker
 
 PYTHON := python3
 
@@ -52,7 +53,11 @@ submit-ast: build-parser
 		$(TARGET_DIR)/main/zcode/parser/* \
 		$(AST_GEN_SOLUTION_DIR)
 	
-submit-static-checking:
+submit-checker:
+	mkdir -p $(CHECKER_SOLUTION_DIR)
+	cp $(PROJ_DIR)/src/main/zcode/checker/StaticCheck.py \
+	$(PROJ_DIR)/src/test/CheckSuite.py \
+	$(CHECKER_SOLUTION_DIR)
 
 submit-bytecode-gen:
 
