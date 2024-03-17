@@ -181,7 +181,9 @@ class CheckSuite(unittest.TestCase):
         inp = """
         func main() begin
             begin
+                begin
                 break
+                end
             end
         end
         """
@@ -191,12 +193,32 @@ class CheckSuite(unittest.TestCase):
         inp = """
         func main() begin
             begin
+                begin
                 continue
+                end
             end
         end
         """
         expect = str(MustInLoop(Continue()))
         self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_5"))
+
+        inp = """
+        func main() begin
+            number i
+            for i until i > 10 by 1 break
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_6"))
+
+        inp = """
+        func main() begin
+            number i
+            for i until i > 10 by 1 continue
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_7"))
 
     def test_redeclared_variable(self):
         inp = """
@@ -241,6 +263,15 @@ class CheckSuite(unittest.TestCase):
         expect = str(Redeclared(Variable(), 'x'))
         self.assertTrue(TestChecker.test(inp, expect, "redeclared_var_3"))
 
+        inp = """
+        func main() begin
+            var main <- 1
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "redeclared_var_4"))
+
+
     def test_undeclared_identifier(self):
         inp = """
         func main() begin
@@ -272,6 +303,77 @@ class CheckSuite(unittest.TestCase):
         expect = str(Undeclared(Identifier(), 'y'))
         self.assertTrue(TestChecker.test(inp, expect, "undeclared_id_2"))
 
+        inp = """
+        func f() return x
+        func main() begin
+            number x <- f()
+        end
+        """
+        expect = str(Undeclared(Identifier(), 'x'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_id_3"))
+
+        inp = """
+        func main() begin
+            var x <- 1
+            begin
+                var y <- x
+            end
+            var z <- y
+        end
+        """
+        expect = str(Undeclared(Identifier(), 'y'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_id_4"))
+
+        inp = """
+        func main() begin
+            begin
+                var x <- 1
+            end
+            x[100] <- 2
+        end
+        """
+        expect = str(Undeclared(Identifier(), 'x'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_id_5"))
+
+        inp = """
+        func main() begin
+            begin
+                dynamic x
+                x <- 1
+            end
+        x[1, 2, 3] <- 12
+        end
+        """
+        expect = str(Undeclared(Identifier(), 'x'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_id_6"))
+
+    def test_undeclared_function(self):
+        inp = """
+        func main() begin
+            number x <- f()
+        end
+        """
+        expect = str(Undeclared(Function(), 'f'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_function_0"))
+
+        inp = """
+        func f() return g()
+        func main() return
+        """
+        expect = str(Undeclared(Function(), 'g'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_function_1"))
+
+        inp = """
+        func main() begin
+            var x <- 1
+            begin
+                var y <- 2
+            end
+            var z <- y()
+        end
+        """
+        expect = str(Undeclared(Function(), 'y'))
+        self.assertTrue(TestChecker.test(inp, expect, "undeclared_function_2"))
 
     def test_simple_var_declaration(self):
         inp = """
@@ -663,6 +765,20 @@ class CheckSuite(unittest.TestCase):
         """
         expect = str(Redeclared(Parameter(), 'y'))
         self.assertTrue(TestChecker.test(inp, expect, "redeclared_parameter_1"))
+
+        inp = """
+        func f(number f, number f1) return f + f1
+        func main() return
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "redeclared_parameter_2"))
+
+        inp = """
+        func f(number f1, number f, number f) return f
+        func main() return
+        """
+        expect = str(Redeclared(Parameter(), 'f'))
+        self.assertTrue(TestChecker.test(inp, expect, "redeclared_parameter_3"))
 
     def test_type_inference_from_param_types(self):
         inp = """
@@ -1470,3 +1586,38 @@ class CheckSuite(unittest.TestCase):
         """
         expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_5"))
+
+    def test_type_inference_inside_scope(self):
+        inp = """
+        func main() begin
+            dynamic x
+            begin
+                x <- 1
+                dynamic x
+                x <- true
+            end
+            dynamic y <- not x
+        end
+        """
+        expect = str(TypeMismatchInExpression(UnaryOp('not', Id('x'))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_inside_scope_0"))
+
+        inp = """
+        func f(number x, bool y, string z) return
+        func main() begin
+            dynamic x
+            dynamic y
+            dynamic z
+            begin
+                dynamic x
+                dynamic y
+                f(x, y, z)
+            end
+            ## z is string, x and y is not type-determined
+            x <- 1
+            y <- "abc"
+            var g <- ((y ... z) == z) and (x = 1)
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_inside_scope_1"))

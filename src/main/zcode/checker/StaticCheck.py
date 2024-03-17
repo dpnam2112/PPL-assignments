@@ -31,7 +31,7 @@ class TypeEnvironment:
         self.beginScope()
 
     def declare(self, name, var_type):
-        scope = self.getCurrentScope()
+        scope = self.scopes[-1]
         scope[name] = var_type
 
     def isInCurrentScope(self, name):
@@ -46,18 +46,22 @@ class TypeEnvironment:
         return None
 
     def setType(self, name, var_type):
-        scope = self.getCurrentScope()
-        assert name in scope
-        scope[name] = var_type
+        for scope in reversed(self.scopes):
+            if name in scope:
+                scope[name] = var_type
+                return
+
+    def getGlobalVarType(self, name):
+        try:
+            return self.scopes[0][name]
+        except KeyError:
+            return None
 
     def beginScope(self):
         self.scopes.append(dict())
 
     def endScope(self):
         self.scopes.pop()
-
-    def getCurrentScope(self):
-        return self.scopes[-1]
 
 def compatibleTypes(lhs_type, rhs_type):
     # Type variable can be any type
@@ -531,7 +535,7 @@ class StaticChecker(BaseVisitor, Utils):
 
     def visitReturn(self, ast: Return, param):
         fn_name = self.getCurrentFnName()
-        fn_type = self.typeEnv.getType(fn_name)
+        fn_type = self.typeEnv.getGlobalVarType(fn_name)
 
         assert isinstance(fn_type, FnType)
 
