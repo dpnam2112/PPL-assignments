@@ -152,7 +152,7 @@ class StaticChecker(BaseVisitor, Utils):
         self.typeEnv = TypeEnvironment()
 
         # Used to check the current position of the checker in the AST.
-        self.inLoop = False
+        self.loopCount = 0
         self.inArray = 0
 
         # Used to check if there is a function without definition.
@@ -359,11 +359,11 @@ class StaticChecker(BaseVisitor, Utils):
         return True
 
     def visitBreak(self, ast, param):
-        if not self.inLoop:
+        if self.loopCount == 0:
             raise MustInLoop(ast)
 
     def visitContinue(self, ast, param):
-        if not self.inLoop:
+        if self.loopCount == 0:
             raise MustInLoop(ast)
 
     def visitArrayCell(self, ast: ArrayCell, param):
@@ -523,7 +523,7 @@ class StaticChecker(BaseVisitor, Utils):
         self.typeConstraints.pop()
 
     def visitFor(self, ast: For, param):
-        self.inLoop = True
+        self.loopCount += 1
         try:
             self.typeConstraints.append(NumberType())
             if not ast.name.accept(self, None):
@@ -539,7 +539,7 @@ class StaticChecker(BaseVisitor, Utils):
 
         self.typeConstraints = self.typeConstraints[:-3]
         ast.body.accept(self, None)
-        self.inLoop = False
+        self.loopCount -= 1
 
     def visitReturn(self, ast: Return, param):
         fn_name = self.getCurrentFnName()

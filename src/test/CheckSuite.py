@@ -188,6 +188,53 @@ class CheckSuite(unittest.TestCase):
 
         inp = """
         func main() begin
+            var i <- 1
+            for i until i > 1 by 1 begin
+                for i until i > 1 by 1 begin
+                    break
+                    for i until i > 1 by 1 begin
+                        continue
+                    end
+                    continue
+                end
+                continue
+                break
+            end
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_4"))
+
+        inp = """
+        func main() begin
+            var i <- 1
+            for i until i > 1 by 1
+                if (true)
+                    break
+                else
+                    continue
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_5"))
+
+        inp = """
+        func main() begin
+            var i <- 1
+            for i until i > 1 by 1
+                if (true)
+                    break
+                else
+                    continue
+            continue
+
+        end
+        """
+        expect = str(MustInLoop(Continue())) 
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_6"))
+
+        inp = """
+        func main() begin
             begin
                 begin
                 break
@@ -196,7 +243,7 @@ class CheckSuite(unittest.TestCase):
         end
         """
         expect = str(MustInLoop(Break()))
-        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_4"))
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_7"))
 
         inp = """
         func main() begin
@@ -208,7 +255,7 @@ class CheckSuite(unittest.TestCase):
         end
         """
         expect = str(MustInLoop(Continue()))
-        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_5"))
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_8"))
 
         inp = """
         func main() begin
@@ -217,7 +264,7 @@ class CheckSuite(unittest.TestCase):
         end
         """
         expect = ""
-        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_6"))
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_9"))
 
         inp = """
         func main() begin
@@ -226,7 +273,7 @@ class CheckSuite(unittest.TestCase):
         end
         """
         expect = ""
-        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_7"))
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_10"))
 
     def test_redeclared_variable(self):
         inp = """
