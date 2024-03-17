@@ -88,6 +88,13 @@ def getResultType(op):
         return BoolType()
     return StringType()
 
+class IllegalArrayLiteral(Exception):
+    def __init__(self, ast):
+        self.ast = ast
+
+    def __str__(self):
+        return f"IllegalArrayLiteral({self.ast})"
+
 class StaticChecker(BaseVisitor, Utils):
     """Static checker is used to check if the input program satisfies all semantic constraints
     defined by the ZCode programming language.
@@ -410,13 +417,18 @@ class StaticChecker(BaseVisitor, Utils):
         if not fn_type.returnType:
             fn_type.returnType = VoidType()
 
-        try:
-            for arg_type, arg_expr in zip(fn_type.argTypes, ast.args):
+        for arg_type, arg_expr in zip(fn_type.argTypes, ast.args):
+            if not isinstance(arg_type, ArrayType):
                 self.typeConstraints.append(arg_type)
                 if not arg_expr.accept(self, None):
-                    raise TypeMismatchInExpression(ast)
-        except TypeCannotBeInferred:
-            raise TypeCannotBeInferred(ast)
+                    raise TypeMismatchInStatement(ast)
+                self.typeConstraints.pop()
+            else:
+                self.typeConstraints.append(TypePlaceholder())
+                arg_expr.accept(self, None)
+                passed_param_type = self.typeConstraints.pop().getType()
+                if not isinstance(passed_param_type, ArrayType) or passed_param_type.size != arg_type.size:
+                    raise TypeMismatchInStatement(ast)
 
     def visitCallExpr(self, ast: CallExpr, param):
         fn_name = ast.name.name
@@ -431,36 +443,19 @@ class StaticChecker(BaseVisitor, Utils):
             raise TypeMismatchInExpression(ast)
 
         for arg_type, arg_expr in zip(fn_type.argTypes, ast.args):
-            self.typeConstraints.append(arg_type)
-            if not arg_expr.accept(self, None):
-                raise TypeMismatchInExpression(ast)
-            self.typeConstraints.pop()
+            if not isinstance(arg_type, ArrayType):
+                self.typeConstraints.append(arg_type)
+                if not arg_expr.accept(self, None):
+                    raise TypeMismatchInExpression(ast)
+                self.typeConstraints.pop()
+            else:
+                self.typeConstraints.append(TypePlaceholder())
+                arg_expr.accept(self, None)
+                passed_param_type = self.typeConstraints.pop().getType()
+                if not isinstance(passed_param_type, ArrayType) or passed_param_type.size != arg_type.size:
+                    raise TypeMismatchInExpression(ast)
 
         return_type_constr = self.typeConstraints[-1]
-
-#        if isinstance(return_type_constr, ArrayType):
-#            if not fn_type.returnType and return_type_constr.size == []:
-#                raise TypeCannotBeInferred(ast)
-#
-#            # fn_type.returnType, size == [] -> TypeMismatch
-#            # not fn_type.returnType, size != [] -> type infer, return True
-#            # fn_type.returnType, size != [] -> TypeMismatch
-#
-#            if not fn_type.returnType and return_type_constr.size != []:
-#                fn_type.returnType = return_type_constr
-#
-#            return isinstance(fn_type.returnType, ArrayType)
-#
-#        if not fn_type.returnType and isinstance(return_type_constr, TypePlaceholder):
-#            # both function type and the constraint are not inferred
-#            raise TypeCannotBeInferred(ast)
-#
-#        if fn_type.returnType and isinstance(return_type_constr, TypePlaceholder):
-#            # the constraint is not inferred, infer the constraint from the function type
-#            return_type_constr.setType(fn_type.returnType)
-#        elif not fn_type.returnType and not isinstance(return_type_constr, TypePlaceholder):
-#            # function type is not inferred, infer from the constraint
-#            fn_type.returnType = return_type_constr
 
         if not fn_type.returnType:
             # infer function's return type
@@ -570,86 +565,75 @@ class StaticChecker(BaseVisitor, Utils):
             return False
 
         if isinstance(type_constr, TypePlaceholder):
-            type_constr_unwrapped = type_constr.getType()
-            if isinstance(type_constr_unwrapped, ArrayType) and len(type_constr_unwrapped.size) > 1:
-                type_var = TypePlaceholder()
-                type_var.setType(ArrayType(eleType=type_constr_unwrapped.eleType,
-                                        size=type_constr_unwrapped.size[1:]))
-                self.typeConstraints.append(type_var)
-            elif isinstance(type_constr_unwrapped, ArrayType):
-                # the expressions in the array are subject to belonging to atomic type
-                self.typeConstraints.append(type_constr_unwrapped.eleType)
-            else:
-                self.typeConstraints.append(TypePlaceholder())
-            
-            # Visit the first expression in the array to infer its element type.
-            # If the element type is inferred by visiting another expression, this visiting is used
-            # to check if the constraint put on the expression is satisfied.
-            visit_head = ast.value[0].accept(self, None)
-            if not visit_head:
-                return False
-
-            head_ele_type = self.typeConstraints[-1]
-
-            # Unwrap the type variable if it is inferred to an atomic type
-            # otherwise, keep it as it is because we arent sure that the size of other subarray is
-            # the same as the first one.
-            if (isinstance(head_ele_type, TypePlaceholder) 
-                and not isinstance(head_ele_type.getType(), ArrayType)):
-                head_ele_type = head_ele_type.getType()
-
-            self.typeConstraints[-1] = head_ele_type
-
-            for expr in ast.value[1:]:
-                visit_expr = expr.accept(self, None)
-                if not visit_expr:
-                    return False
-
-            ele_type = self.typeConstraints.pop()
-
-            if isinstance(type_constr_unwrapped, ArrayType):
-                if len(type_constr_unwrapped.size) == 1:
-                    inferred_arr_size = [max(type_constr_unwrapped.size[0], len(ast.value))]
-                else:
-                    inferred_arr_size = list(map(lambda pair: max(pair),
-                                   zip(type_constr_unwrapped.size, ele_type.size)))
-
-                type_constr.setType(ArrayType(eleType=type_constr_unwrapped.eleType,
-                                      size=inferred_arr_size))
-            else:
-                assert type_constr_unwrapped is None
-                if isinstance(ele_type, TypePlaceholder):
-                    ele_type = ele_type.getType()
-
-                if isinstance(ele_type, ArrayType):
-                    arr_type = ArrayType(eleType=ele_type.eleType,
-                                    size=[len(ast.value)] + ele_type.size)
-                else:
-                    arr_type = ArrayType(eleType=ele_type,
-                                         size=[len(ast.value)])
-
-                type_constr.setType(arr_type)
+            return self.visitUnknownTypeArrLit(ast, None)
         else:
-            assert isinstance(type_constr, ArrayType)
+            return self.visitKnownTypeArrLit(ast, None)
 
-            if len(ast.value) != type_constr.size[0]:
+    def visitUnknownTypeArrLit(self, ast: ArrayLiteral, param):
+        assert isinstance(self.typeConstraints[-1], TypePlaceholder)
+
+        # constraint applied for this array
+        arr_type_constr = self.typeConstraints[-1]
+
+        self.typeConstraints.append(TypePlaceholder())
+        ast.value[0].accept(self, None)
+
+        first_ele_type = self.typeConstraints.pop()
+        if not isinstance(first_ele_type.getType(), ArrayType):
+            first_ele_type = first_ele_type.getType()
+
+        self.typeConstraints.append(first_ele_type)
+        for expr in ast.value[1:]:
+            if not expr.accept(self, None):
+                return False
+        ele_type_constr = self.typeConstraints.pop()
+
+        if isinstance(ele_type_constr, TypePlaceholder):
+            ele_type_constr = ele_type_constr.getType()
+
+        arr_type = None
+        if isinstance(ele_type_constr, ArrayType):
+            arr_type = ArrayType([len(ast.value)] + ele_type_constr.size, ele_type_constr.eleType)
+        else:
+            # element type must be scalar type in this case
+            arr_type = ArrayType([len(ast.value)], ele_type_constr)
+
+        if not arr_type_constr.getType():
+            arr_type_constr.setType(arr_type)
+        else:
+            # If this array has an constraint applied to it
+            # this case can happen for subarrays
+            arr_type_constr = arr_type_constr.getType()
+            assert isinstance(arr_type_constr, ArrayType)
+            if len(arr_type_constr.size) != len(arr_type.size) or not compatibleTypes(arr_type_constr.eleType, arr_type.eleType):
                 return False
 
-            ele_type_constr = None
-            if len(type_constr.size) != 1:
-                ele_type_constr = ArrayType(eleType=type_constr.eleType, size=type_constr.size[1:])
-            else:
-                ele_type_constr = type_constr.eleType
+            inferred_size = list(map(lambda pair: max(pair), zip(arr_type_constr.size, arr_type.size)))
+            arr_type_constr.size = inferred_size
 
-            self.typeConstraints.append(ele_type_constr)
+        return True
 
-            for expr in ast.value:
-                satisfied_constr = expr.accept(self, None)
-                if not satisfied_constr:
-                    return False
-            
-            self.typeConstraints.pop()
+    def visitKnownTypeArrLit(self, ast: ArrayLiteral, param):
+        assert isinstance(self.typeConstraints[-1], ArrayType)
+        type_constr = self.typeConstraints[-1]
 
+        if len(ast.value) > type_constr.size[0]:
+            return False
+
+        ele_type_constr = None
+        if len(type_constr.size) != 1:
+            ele_type_constr = ArrayType(eleType=type_constr.eleType, size=type_constr.size[1:])
+        else:
+            ele_type_constr = type_constr.eleType
+
+        self.typeConstraints.append(ele_type_constr)
+
+        for expr in ast.value:
+            satisfied_constr = expr.accept(self, None)
+            if not satisfied_constr:
+                return False
+        
+        self.typeConstraints.pop()
         return True
 
     def visitId(self, ast: Id, param):
