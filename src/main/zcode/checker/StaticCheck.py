@@ -291,6 +291,8 @@ class StaticChecker(BaseVisitor, Utils):
                 and not (isinstance(exception.stmt, Id)
                          or isinstance(exception.stmt, CallExpr))):
                 raise TypeCannotBeInferred(ast)
+            # empty the type placeholder, for cases that it is mofified by the visitor
+            self.typeConstraints[-1] = TypePlaceholder()
 
         if self.typeConstraints[-1].getType():
             self.typeConstraints[-1] = self.typeConstraints[-1].getType()
@@ -498,19 +500,25 @@ class StaticChecker(BaseVisitor, Utils):
         except TypeCannotBeInferred:
             raise TypeCannotBeInferred(ast)
 
+        self.beginScope()
         ast.thenStmt.accept(self, None)
+        self.endScope()
 
-        for cond, block in ast.elifStmt:
+        for cond, stmt in ast.elifStmt:
             try:
                 if not cond.accept(self, None):
                     raise TypeMismatchInStatement(ast)
             except TypeCannotBeInferred:
                 raise TypeCannotBeInferred(ast)
 
-            block.accept(self, None)
+            self.beginScope()
+            stmt.accept(self, None)
+            self.endScope()
 
         if ast.elseStmt:
+            self.beginScope()
             ast.elseStmt.accept(self, None)
+            self.endScope()
         
         self.typeConstraints.pop()
 
