@@ -28,6 +28,9 @@ test-parser:
 test-ast-gen:
 	$(PYTHON) run.py test ASTGenSuite
 
+test-static-checker:
+	$(PYTHON) run.py test CheckerSuite
+
 clean:
 	rm -rf $(TARGET_DIR)/*
 	rm -rf test/solutions/*

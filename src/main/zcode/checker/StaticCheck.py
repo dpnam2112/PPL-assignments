@@ -68,11 +68,11 @@ def compatibleTypes(lhs_type, rhs_type):
     if isinstance(lhs_type, TypePlaceholder):
         return True if lhs_type.getType() is None else compatibleTypes(lhs_type.getType(), rhs_type)
 
-    if lhs_type.__class__ != rhs_type.__class__:
+    if not (type(lhs_type) is type(rhs_type)):
         return False
 
     if isinstance(lhs_type, ArrayType):
-        return (lhs_type.eleType.__class__ == rhs_type.eleType.__class__
+        return (type(lhs_type.eleType) is type(rhs_type.eleType)
                 and len(lhs_type.size) == len(rhs_type.size)
                 and all([i >= j for i, j in zip(lhs_type.size, rhs_type.size)]))
 
@@ -160,7 +160,22 @@ class StaticChecker(BaseVisitor, Utils):
         self.currentFnName = ""
         self.typeConstraints = []
 
+        self.builtin_functions = {
+                "readNumber": FnType(return_type=NumberType(), arg_types=[]),
+                "writeNumber": FnType(return_type=VoidType(), arg_types=[NumberType()]),
+                "readBool": FnType(return_type=BoolType(), arg_types=[]),
+                "writeBool": FnType(return_type=VoidType(), arg_types=[BoolType()]),
+                "readString": FnType(return_type=StringType(), arg_types=[]),
+                "writeString": FnType(return_type=VoidType(), arg_types=[StringType()])
+        }
+
+        for fn_name, fn_type in self.builtin_functions.items():
+            self.typeEnv.declare(fn_name, fn_type)
+
     def check(self):
+        if self.prog.decl == []:
+            raise NoEntryPoint()
+
         self.prog.accept(self, None)
 
         # Check for no-function-definition error
@@ -193,6 +208,9 @@ class StaticChecker(BaseVisitor, Utils):
     def isFunctionRedeclaration(self, ast: FuncDecl):
         fn_name = ast.name.name
 
+        if fn_name in self.builtin_functions.keys():
+            return True
+
         # Check if there is any identifier declared.
         fn_type = self.typeEnv.getType(fn_name)
         if fn_type is not None and not isinstance(fn_type, FnType):
@@ -222,10 +240,9 @@ class StaticChecker(BaseVisitor, Utils):
 
     def visitFuncDecl(self, ast: FuncDecl, param):
         fn_name = ast.name.name
-
         if self.isFunctionRedeclaration(ast):
             raise Redeclared(Function(), fn_name)
-        
+
         self.funcDecls[fn_name] = ast
         fn_type = self.typeEnv.getType(fn_name)
 
@@ -236,10 +253,12 @@ class StaticChecker(BaseVisitor, Utils):
                     )
             self.typeEnv.declare(fn_name, fn_type)
 
+        assert isinstance(fn_type, FnType)
 
         self.funcDecls[fn_name] = ast
-
         self.setCurrentFnName(fn_name)
+
+        # scope for parameters
         self.beginScope()
         for param_decl in ast.param:
             try:
@@ -248,13 +267,11 @@ class StaticChecker(BaseVisitor, Utils):
                 exception.kind = Parameter()
                 raise exception
 
-        self.beginScope()
         if ast.body:
             ast.body.accept(self, None)
             if not fn_type.returnType:
                 fn_type.returnType = VoidType()
 
-        self.endScope()
         self.endScope()
 
     def visitVarDecl(self, ast: VarDecl, param):
@@ -384,7 +401,7 @@ class StaticChecker(BaseVisitor, Utils):
         # Although we can infer the type of x[1, 2, 3], but what about x? It is for sure an array of
         # number, but what is its size? [4, 4, 4]? [10, 10, 10]?
         #
-        # So, we cannot infer the type of the array in this case. The 'invalid array' (its size is
+        # So, we cannot infer the type of the array in this case. An 'invalid array' (its size is
         # empty) is pushed to the list of constraints so the checker can use it to determine if it
         # is able to infer the type of a variable or the return type of a function.
 
@@ -569,16 +586,20 @@ class StaticChecker(BaseVisitor, Utils):
         assert ast.value != []
         type_constr = self.typeConstraints[-1]
 
-        if type_constr.__class__ not in [ArrayType, TypePlaceholder]:
+        if not isinstance(type_constr, (ArrayType, TypePlaceholder)):
             return False
 
-        if (isinstance(type_constr, TypePlaceholder) 
-            and type_constr.getType().__class__ not in [ArrayType, None.__class__]):
+        if (isinstance(type_constr, TypePlaceholder)
+            and not isinstance(type_constr.getType(), (ArrayType, type(None)))):
             return False
 
         if isinstance(type_constr, TypePlaceholder):
+            # an example of unknown-type array literal:
+            # var x <- [1, 2, 3, 4, 5]
             return self.visitUnknownTypeArrLit(ast, None)
         else:
+            # an example of known-type array literal:
+            # number x[5] <- [1, 2, 3, 4, 5]
             return self.visitKnownTypeArrLit(ast, None)
 
     def visitUnknownTypeArrLit(self, ast: ArrayLiteral, param):

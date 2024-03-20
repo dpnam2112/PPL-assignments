@@ -72,7 +72,10 @@ class CheckSuite(unittest.TestCase):
         """
         expect_8 = str(NoEntryPoint())
         self.assertTrue(TestChecker.test(input_8, expect_8, "no_entry_point_8"))
-
+        
+        input_9 = Program([])
+        expect = str(NoEntryPoint())
+        self.assertTrue(TestChecker.test(input_9, expect, "no_entry_point_9"))
 
     def test_no_definition(self):
         inp = """
@@ -146,6 +149,17 @@ class CheckSuite(unittest.TestCase):
         """
         expect = str(Redeclared(Function(), 'f'))
         self.assertTrue(TestChecker.test(inp, expect, "redeclared_fn_5"))
+
+    def test_redeclared_builtin_function(self):
+        builtin_fn = ["readNumber", "writeNumber", "readBool", "writeBool", "readString", "writeString"]
+        for fn_name in builtin_fn:
+            inp = f"func {fn_name}()\n func main() return\n"
+            expect = str(Redeclared(Function(), fn_name))
+            self.assertTrue(TestChecker.test(inp, expect, f"redeclared_buildin_{fn_name}_0"))
+
+            inp = f"var {fn_name} <- 1\n func main() return\n"
+            expect = str(Redeclared(Variable(), fn_name))
+            self.assertTrue(TestChecker.test(inp, expect, f"redeclared_buildin_{fn_name}_1"))
 
     def test_loop_ctrl(self):
         inp = """
@@ -274,6 +288,22 @@ class CheckSuite(unittest.TestCase):
         """
         expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_10"))
+
+        inp = """
+        func main() begin
+            number i
+            for i until true by 1 begin
+                begin
+                    begin
+                        break
+                    end
+                    continue
+                end
+            end
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "must_in_loop_11"))
 
     def test_redeclared_variable(self):
         inp = """
@@ -795,7 +825,7 @@ class CheckSuite(unittest.TestCase):
             number y
             y <- x
 
-            ## ensure that x is inferred as number
+            ## ensure that x's type is inferred to be number type
             number z <- x
         end
         """
@@ -808,7 +838,7 @@ class CheckSuite(unittest.TestCase):
             number y
             x <- y
 
-            ## ensure that x is inferred as number
+            ## ensure that x's type is inferred to be number type
             number z <- x
         end
         """
@@ -1878,6 +1908,31 @@ class CheckSuite(unittest.TestCase):
         """
         expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_inference_inside_scope_1"))
+
+    def test_builtin_fn_return_type(self):
+        inp = """
+        number x <- readNumber()
+        bool y <- readBool()
+        string z <- readString()
+
+        func main() begin
+            writeNumber(x)
+            writeBool(y)
+            writeString(z)
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "test_builtin_fn_0"))
+
+        inp = """
+        func f() return readNumber()
+
+        func main() begin
+            return writeNumber()
+        end
+        """
+        expect = str(TypeMismatchInExpression(CallExpr(Id('writeNumber'), [])))
+        self.assertTrue(TestChecker.test(inp, expect, "test_builtin_fn_1"))
 
     def test_single_tc(self):
         inp = """
