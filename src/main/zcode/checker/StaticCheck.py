@@ -28,16 +28,23 @@ class FnType(Type):
 class TypeEnvironment:
     def __init__(self):
         self.scopes = []
+        self.functions = {}
         self.beginScope()
 
     def declare(self, name, var_type):
+        """Declare a variable name whose type is var_type."""
         scope = self.scopes[-1]
         scope[name] = var_type
+
+    def declareFn(self, fn_name, fn_type):
+        """Declare a function."""
+        self.functions[fn_name] = fn_type
 
     def isInCurrentScope(self, name):
         return name in self.scopes[-1]
 
     def getType(self, name):
+        """Get type of the variable."""
         for scope in reversed(self.scopes):
             try:
                 return scope[name]
@@ -46,14 +53,19 @@ class TypeEnvironment:
         return None
 
     def setType(self, name, var_type):
+        """Set type of the variable."""
         for scope in reversed(self.scopes):
             if name in scope:
                 scope[name] = var_type
                 return
 
-    def getGlobalVarType(self, name):
+    def setReturnType(self, fn_name, return_type):
+        """Set return type of the function."""
+        self.functions[fn_name].returnType = return_type
+
+    def getFnType(self, fn_name):
         try:
-            return self.scopes[0][name]
+            return self.functions[fn_name]
         except KeyError:
             return None
 
@@ -74,7 +86,7 @@ def compatibleTypes(lhs_type, rhs_type):
     if isinstance(lhs_type, ArrayType):
         return (type(lhs_type.eleType) is type(rhs_type.eleType)
                 and len(lhs_type.size) == len(rhs_type.size)
-                and all([i >= j for i, j in zip(lhs_type.size, rhs_type.size)]))
+                and all([i == j for i, j in zip(lhs_type.size, rhs_type.size)]))
 
     return True
 
@@ -170,7 +182,7 @@ class StaticChecker(BaseVisitor, Utils):
         }
 
         for fn_name, fn_type in self.builtin_functions.items():
-            self.typeEnv.declare(fn_name, fn_type)
+            self.typeEnv.declareFn(fn_name, fn_type)
 
     def check(self):
         if self.prog.decl == []:
@@ -186,11 +198,7 @@ class StaticChecker(BaseVisitor, Utils):
         if 'main' not in self.funcDecls:
             raise NoEntryPoint()
 
-        main_decl = self.funcDecls['main']
-        main_fn_type = self.typeEnv.getType('main')
-
-#        if not (main_decl and main_decl.param == [] and main_decl.body and ):
-#            raise NoEntryPoint()
+        main_fn_type = self.typeEnv.getFnType('main')
 
         if not (main_fn_type and isinstance(main_fn_type, FnType) and
                 isinstance(main_fn_type.returnType, VoidType) and main_fn_type.argTypes == []):
@@ -202,21 +210,20 @@ class StaticChecker(BaseVisitor, Utils):
     def getCurrentFnName(self) -> str:
         return self.currentFnName
 
-    def getFnType(self, name: str):
-        pass
-
     def isFunctionRedeclaration(self, ast: FuncDecl):
         fn_name = ast.name.name
 
         if fn_name in self.builtin_functions.keys():
             return True
 
-        # Check if there is any identifier declared.
-        fn_type = self.typeEnv.getType(fn_name)
-        if fn_type is not None and not isinstance(fn_type, FnType):
-            return True
+        fn_type = self.typeEnv.getFnType(fn_name)
+
+#        if fn_type is not None:
+#            print(fn_type)
+#            return True
         
-        if not fn_type: return False
+        if not fn_type:
+            return False
 
         # we need to use function declaration instead of function type in this case because we
         # also need to check if the previous declaration has a body.
@@ -244,14 +251,14 @@ class StaticChecker(BaseVisitor, Utils):
             raise Redeclared(Function(), fn_name)
 
         self.funcDecls[fn_name] = ast
-        fn_type = self.typeEnv.getType(fn_name)
+        fn_type = self.typeEnv.getFnType(fn_name)
 
         if not fn_type:
             fn_type = FnType(
                         arg_types=[decl.varType for decl in ast.param],
                         return_type=None
                     )
-            self.typeEnv.declare(fn_name, fn_type)
+            self.typeEnv.declareFn(fn_name, fn_type)
 
         assert isinstance(fn_type, FnType)
 
@@ -284,10 +291,8 @@ class StaticChecker(BaseVisitor, Utils):
         self.typeConstraints.append(var_type)
 
         try:
-            if ast.varInit:
-                satisfied_constr = ast.varInit.accept(self, None)
-                if not satisfied_constr:
-                    raise TypeMismatchInStatement(ast)
+            if ast.varInit and not ast.varInit.accept(self, None):
+                raise TypeMismatchInStatement(ast)
         except TypeCannotBeInferred:
             raise TypeCannotBeInferred(ast)
 
@@ -367,8 +372,7 @@ class StaticChecker(BaseVisitor, Utils):
 
         self.typeConstraints.append(getOperandType(ast.op))
 
-        visit_operand = ast.operand.accept(self, None)
-        if not visit_operand:
+        if not ast.operand.accept(self, None):
             raise TypeMismatchInExpression(ast)
 
         self.typeConstraints.pop()
@@ -415,7 +419,7 @@ class StaticChecker(BaseVisitor, Utils):
                     raise TypeMismatchInExpression(ast)
             elif isinstance(ast.arr, CallExpr):
                 fn_name = ast.arr.name.name
-                fn_type = self.typeEnv.getType(fn_name)
+                fn_type = self.typeEnv.getFnType(fn_name)
                 if not isinstance(fn_type.returnType, ArrayType):
                     raise TypeMismatchInExpression(ast)
 
@@ -428,7 +432,7 @@ class StaticChecker(BaseVisitor, Utils):
     def visitCallStmt(self, ast: CallStmt, param):
         fn_name = ast.name.name
 
-        fn_type = self.typeEnv.getType(fn_name)
+        fn_type = self.typeEnv.getFnType(fn_name)
         if not fn_type:
             raise Undeclared(Function(), fn_name)
 
@@ -456,12 +460,11 @@ class StaticChecker(BaseVisitor, Utils):
     def visitCallExpr(self, ast: CallExpr, param):
         fn_name = ast.name.name
 
-        fn_type = self.typeEnv.getType(fn_name)
+        fn_type = self.typeEnv.getFnType(fn_name)
         if not fn_type:
             raise Undeclared(Function(), fn_name)
 
-        if (not isinstance(fn_type, FnType) 
-            or len(ast.args) != len(fn_type.argTypes) 
+        if (len(ast.args) != len(fn_type.argTypes) 
             or isinstance(fn_type.returnType, VoidType)):
             raise TypeMismatchInExpression(ast)
 
@@ -483,6 +486,7 @@ class StaticChecker(BaseVisitor, Utils):
         if not fn_type.returnType:
             # infer function's return type
             if (isinstance(return_type_constr, ArrayType) and return_type_constr.size == []):
+                # invalid array type
                 raise TypeCannotBeInferred(ast)
 
             if isinstance(return_type_constr, TypePlaceholder) and not return_type_constr.getType():
@@ -560,7 +564,7 @@ class StaticChecker(BaseVisitor, Utils):
 
     def visitReturn(self, ast: Return, param):
         fn_name = self.getCurrentFnName()
-        fn_type = self.typeEnv.getGlobalVarType(fn_name)
+        fn_type = self.typeEnv.getFnType(fn_name)
 
         assert isinstance(fn_type, FnType)
 
@@ -589,6 +593,7 @@ class StaticChecker(BaseVisitor, Utils):
         if not isinstance(type_constr, (ArrayType, TypePlaceholder)):
             return False
 
+
         if (isinstance(type_constr, TypePlaceholder)
             and not isinstance(type_constr.getType(), (ArrayType, type(None)))):
             return False
@@ -604,7 +609,6 @@ class StaticChecker(BaseVisitor, Utils):
 
     def visitUnknownTypeArrLit(self, ast: ArrayLiteral, param):
         assert isinstance(self.typeConstraints[-1], TypePlaceholder)
-
         # constraint applied for this array
         arr_type_constr = self.typeConstraints[-1]
 
@@ -624,6 +628,7 @@ class StaticChecker(BaseVisitor, Utils):
         if isinstance(ele_type_constr, TypePlaceholder):
             ele_type_constr = ele_type_constr.getType()
 
+        # Infer type of 'this' array
         arr_type = None
         if isinstance(ele_type_constr, ArrayType):
             arr_type = ArrayType([len(ast.value)] + ele_type_constr.size, ele_type_constr.eleType)
@@ -634,7 +639,7 @@ class StaticChecker(BaseVisitor, Utils):
         if not arr_type_constr.getType():
             arr_type_constr.setType(arr_type)
         else:
-            # If this array has an constraint applied to it
+            # If this array has an constraint applied to itself
             # this case can happen for subarrays
             arr_type_constr = arr_type_constr.getType()
             assert isinstance(arr_type_constr, ArrayType)
@@ -650,7 +655,8 @@ class StaticChecker(BaseVisitor, Utils):
         assert isinstance(self.typeConstraints[-1], ArrayType)
         type_constr = self.typeConstraints[-1]
 
-        if len(ast.value) > type_constr.size[0]:
+        # length of the array literal must be exactly equal to the length of the array type
+        if len(ast.value) != type_constr.size[0]:
             return False
 
         ele_type_constr = None
