@@ -616,8 +616,7 @@ class StaticChecker(BaseVisitor, Utils):
         ast.value[0].accept(self, None)
 
         first_ele_type = self.typeConstraints.pop()
-        if not isinstance(first_ele_type.getType(), ArrayType):
-            first_ele_type = first_ele_type.getType()
+        first_ele_type = first_ele_type.getType()
 
         self.typeConstraints.append(first_ele_type)
         for expr in ast.value[1:]:

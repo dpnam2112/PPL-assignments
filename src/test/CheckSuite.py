@@ -709,7 +709,7 @@ class CheckSuite(unittest.TestCase):
 
         inp = """
         func main() begin
-            var x <- [[1, 2], [1, 2, 3], [1, 2, 3, 4]]
+            var x <- [[1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]]
             number y[3, 4] <- x
         end
         """
@@ -753,13 +753,10 @@ class CheckSuite(unittest.TestCase):
             number x1
             number x2
             number x3
-            var y <- [[[1, 2], x, [x1, x2 , x3]]]
+            var y <- [[[1, 2, 3], x, [x1, x2 , x3]]]
         end
         """
-        arr_lit = ArrayLiteral([ArrayLiteral([ArrayLiteral([NumberLiteral(1.0),
-                                                            NumberLiteral(2.0)]), Id('x'),
-                                              ArrayLiteral([Id('x1'), Id('x2'), Id('x3')])])])
-        expect = str(TypeCannotBeInferred(VarDecl(Id('y'), None, 'var', arr_lit)))
+        expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "array_type_inference_5"))
 
         inp = """
@@ -769,13 +766,10 @@ class CheckSuite(unittest.TestCase):
             number x2
             number x3
             dynamic y
-            y <- [[[1, 2], x, [x1, x2 , x3]]]
+            y <- [[[1, 2, 3], x, [x1, x2 , x3]]]
         end
         """
-        arr_lit = ArrayLiteral([ArrayLiteral([ArrayLiteral([NumberLiteral(1.0),
-                                                            NumberLiteral(2.0)]), Id('x'),
-                                              ArrayLiteral([Id('x1'), Id('x2'), Id('x3')])])])
-        expect = str(TypeCannotBeInferred(Assign(Id('y'), arr_lit)))
+        expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "array_type_inference_6"))
 
 
@@ -902,7 +896,7 @@ class CheckSuite(unittest.TestCase):
         inp = """
         func main() begin
             dynamic x
-            x <- [[1, 2], [1, 2, 3], [1, 2, 3]]
+            x <- [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
             number y[3, 3] <- x
         end
         """
@@ -1889,7 +1883,7 @@ class CheckSuite(unittest.TestCase):
             dynamic y <- [[1], x]
         end
         """
-        expect = str(TypeCannotBeInferred(VarDecl(Id('y'), None, 'dynamic', ArrayLiteral([ArrayLiteral([NumberLiteral(1.0)]), Id('x')]))))
+        expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_4"))
 
         inp = """
@@ -2020,11 +2014,12 @@ class CheckSuite(unittest.TestCase):
     
     def test_single_tc(self):
         inp = """
-        func f() return 1
         func main() begin
-            var x <- f()[0]
+            dynamic a
+            var x <- [[1, 2], [1, 2], a]
+            number b[2] <- a 
         end
         """
-        expect = str(TypeMismatchInExpression(ArrayCell(CallExpr(Id('f'), []), [NumberLiteral(0.0)])))
+        expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_11"))
 
