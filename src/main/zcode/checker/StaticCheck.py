@@ -295,6 +295,8 @@ class StaticChecker(BaseVisitor, Utils):
                 raise TypeMismatchInStatement(ast)
         except TypeCannotBeInferred:
             raise TypeCannotBeInferred(ast)
+        except TypeMismatchInStatement:
+            raise TypeMismatchInStatement(ast)
 
         self.typeConstraints.pop()
 
@@ -588,6 +590,11 @@ class StaticChecker(BaseVisitor, Utils):
 
     def visitArrayLiteral(self, ast: ArrayLiteral, param):
         assert ast.value != []
+#        print("===")
+#        print(ast)
+#        for constr in self.typeConstraints:
+#            print(str(constr))
+#        print("===")
         type_constr = self.typeConstraints[-1]
 
         if not isinstance(type_constr, (ArrayType, TypePlaceholder)):
@@ -621,7 +628,7 @@ class StaticChecker(BaseVisitor, Utils):
         self.typeConstraints.append(first_ele_type)
         for expr in ast.value[1:]:
             if not expr.accept(self, None):
-                return False
+                raise TypeMismatchInExpression(ast)
         ele_type_constr = self.typeConstraints.pop()
 
         if isinstance(ele_type_constr, TypePlaceholder):
@@ -630,10 +637,10 @@ class StaticChecker(BaseVisitor, Utils):
         # Infer type of 'this' array
         arr_type = None
         if isinstance(ele_type_constr, ArrayType):
-            arr_type = ArrayType([len(ast.value)] + ele_type_constr.size, ele_type_constr.eleType)
+            arr_type = ArrayType([float(len(ast.value))] + ele_type_constr.size, ele_type_constr.eleType)
         else:
             # element type must be scalar type in this case
-            arr_type = ArrayType([len(ast.value)], ele_type_constr)
+            arr_type = ArrayType([float(len(ast.value))], ele_type_constr)
 
         if not arr_type_constr.getType():
             arr_type_constr.setType(arr_type)
@@ -666,12 +673,33 @@ class StaticChecker(BaseVisitor, Utils):
 
         self.typeConstraints.append(ele_type_constr)
 
-        for expr in ast.value:
+        # infer first element's type
+        current_constr_count = len(self.typeConstraints)
+
+        try:
+            self.typeConstraints.append(TypePlaceholder())
+            ast.value[0].accept(self, None)
+            self.typeConstraints[-1] = self.typeConstraints[-1].getType()
+        except TypeCannotBeInferred as e:
+            self.typeConstraints = self.typeConstraints[:current_constr_count + 1]
+            self.typeConstraints[-1] = ele_type_constr
+#            print(str(self.typeConstraints[-1]))
+            ast.value[0].accept(self, None)
+
+        for expr in ast.value[1:]:
             satisfied_constr = expr.accept(self, None)
             if not satisfied_constr:
-                return False
+                raise TypeMismatchInExpression(ast)
         
-        self.typeConstraints.pop()
+        type_constr_1 = self.typeConstraints.pop()  # constraint got from the first element
+        type_constr_2 = self.typeConstraints.pop()  # constraint got from the constraint applied to this array
+
+        if not compatibleTypes(type_constr_1, type_constr_2):
+            if len(self.typeConstraints) == 1:
+                raise TypeMismatchInStatement(ast)
+            else:
+                return False
+
         return True
 
     def visitId(self, ast: Id, param):

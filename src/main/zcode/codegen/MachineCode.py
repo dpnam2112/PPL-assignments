@@ -169,6 +169,10 @@ class MachineCode(ABC):
         pass
 
     @abstractmethod
+    def emitFREM(self):
+        pass
+
+    @abstractmethod
     def emitIFACMPEQ(self, label):
         # label: Int
         pass
@@ -566,6 +570,12 @@ class JasminCode(MachineCode):
     def emitIREM(self):
         return JasminCode.INDENT + "rem" + JasminCode.END
 
+    def emitIREM(self):
+        return JasminCode.INDENT + "rem" + JasminCode.END
+
+    def emitFREM(self):
+        return JasminCode.INDENT + "frem" + JasminCode.END
+
     def emitIFACMPEQ(self, label):
         # label: Int
         return JasminCode.INDENT + "if_acmpeq Label" + str(label) + JasminCode.END
@@ -698,6 +708,9 @@ class JasminCode(MachineCode):
 
     def emitFCMPL(self):
         return JasminCode.INDENT + "fcmpl" + JasminCode.END
+
+    def emitFCMPG(self):
+        return JasminCode.INDENT + "fcmpg" + JasminCode.END
 
     def emitLIMITLOCAL(self, in_):
         # in_: Int

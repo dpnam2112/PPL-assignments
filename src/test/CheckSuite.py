@@ -737,18 +737,6 @@ class CheckSuite(unittest.TestCase):
 
         inp = """
         func main() begin
-            number x[2, 3] <- [[1, 2, 3, 4], [1, 2, 3]]
-        end
-        """
-        expect = str(TypeMismatchInStatement(VarDecl(Id('x'), ArrayType([2.0, 3.0], NumberType()), None,
-                                         ArrayLiteral([ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0), NumberLiteral(3.0),
-                                                                     NumberLiteral(4.0)]),
-                                                       ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0),
-                                                                     NumberLiteral(3.0)])]))))
-        self.assertTrue(TestChecker.test(inp, expect, "array_type_inference_4"))
-
-        inp = """
-        func main() begin
             dynamic x
             number x1
             number x2
@@ -771,6 +759,19 @@ class CheckSuite(unittest.TestCase):
         """
         expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "array_type_inference_6"))
+
+        inp = """
+        func main() begin
+            number x[2, 3] <- [[1, 2, 3, 4], [1, 2, 3, 4]]
+        end
+        """
+        expect = str(TypeMismatchInStatement(VarDecl(Id('x'), ArrayType([2.0, 3.0], NumberType()), None,
+                                         ArrayLiteral([ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0), NumberLiteral(3.0),
+                                                                     NumberLiteral(4.0)]),
+                                                       ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0),
+                                                                     NumberLiteral(3.0), NumberLiteral(4.0)])]))))
+        self.assertTrue(TestChecker.test(inp, expect, "array_type_inference_7"))
+
 
 
     def test_type_mismatch_in_statement(self):
@@ -1414,6 +1415,47 @@ class CheckSuite(unittest.TestCase):
         expect = str(TypeMismatchInExpression(ArrayCell(Id('x'), [Id('x1')])))
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_24"))
 
+        inp = """
+        func main() begin
+            number x[2, 3] <- [[1, 2, 3], [1, 2]]
+        end
+        """
+        expect = str(TypeMismatchInExpression(ArrayLiteral([ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0), NumberLiteral(3.0)]), ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0)])])))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_expr_30"))
+
+        inp = """
+        func main() begin
+            number x[2, 3] <- [[1, 2, 3], "abc"]
+        end
+        """
+        expect = str(TypeMismatchInExpression(ArrayLiteral([ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0), NumberLiteral(3.0)]), StringLiteral("abc")])))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_expr_31"))
+
+        inp = """
+        func main() begin
+            dynamic y
+            number x[2, 3] <- [y, 1]
+        end
+        """
+        expect = str(TypeMismatchInExpression(ArrayLiteral([Id('y'), NumberLiteral(1.0)])))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_expr_32"))
+
+        inp = """
+        func main() begin
+            var x <- 3 + [2, 3]
+        end
+        """
+        expect = str(TypeMismatchInExpression(BinaryOp(op='+',left=NumberLiteral(3.0),right=ArrayLiteral([NumberLiteral(2.0), NumberLiteral(3.0)]))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_expr_33"))
+
+        inp = """
+        func main() begin
+            var x <- [true + 1, false]
+        end
+        """
+        expect = str(TypeMismatchInExpression(BinaryOp(op='+',left=BooleanLiteral(True),right=NumberLiteral(1.0))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_expr_34"))
+
     def test_type_mismatch_in_stmt(self):
         inp = """
         func f() return
@@ -1796,14 +1838,6 @@ class CheckSuite(unittest.TestCase):
                                                                 NumberLiteral(3.0)])))
         self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_29"))
 
-        inp = """
-        func main() begin
-            number x[2, 3] <- [[1, 2, 3], [1, 2]]
-        end
-        """
-        expect = str(TypeMismatchInStatement(VarDecl(Id('x'), ArrayType([2.0, 3.0], NumberType()), None, ArrayLiteral([ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0), NumberLiteral(3.0)]), ArrayLiteral([NumberLiteral(1.0), NumberLiteral(2.0)])]))))
-        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_in_stmt_30"))
-
     def test_type_inference_from_expression(self):
         inp = """
         func main() begin
@@ -1899,6 +1933,57 @@ class CheckSuite(unittest.TestCase):
         """
         expect = ""
         self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_5"))
+
+        inp = """
+        func main() begin
+            dynamic x
+            dynamic y
+            number arr[2, 2, 1] <- [[[x], [1]], [[y], [2]]]
+            var z <- x + y
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_6"))
+
+        inp = """
+        func f() begin
+            dynamic x
+            dynamic y
+            return [[1 + 2, 3 + 2 * 8], x, y, [100, 200]]
+        end
+        func main() begin
+            number x[4, 2] <- f()
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_7"))
+
+        inp = """
+        func f() begin
+            if (true)
+                return [1, 2, 3, 4, 5]
+            dynamic y
+            if (true)
+                return [y, y, y, y, y]
+            return [y + 1, 1, 1, 1, 1]
+        end
+        func main() begin
+            number x[5] <- f()
+        end
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_8"))
+
+        inp = """
+        func f() begin
+            dynamic x
+            return [x, x]
+        end
+        func main() return
+        """
+        expect = str(TypeCannotBeInferred(Return(ArrayLiteral([Id('x'), Id('x')]))))
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_9"))
+    
 
     def type_inference_from_return(self):
         inp = """
@@ -2015,11 +2100,12 @@ class CheckSuite(unittest.TestCase):
     def test_single_tc(self):
         inp = """
         func main() begin
-            dynamic a
-            var x <- [[1, 2], [1, 2], a]
-            number b[2] <- a 
+            dynamic x
+            dynamic y
+            dynamic z
+            number arr[2, 2, 2] <- [[[x, z], [1, z]], [[y, z], [2, z]]]
+            var g <- x + y
         end
         """
         expect = ""
-        self.assertTrue(TestChecker.test(inp, expect, "type_mismatch_expr_11"))
-
+        self.assertTrue(TestChecker.test(inp, expect, "type_inference_in_array_6"))
