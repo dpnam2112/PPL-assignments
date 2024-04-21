@@ -277,6 +277,10 @@ class MachineCode(ABC):
         pass
 
     @abstractmethod
+    def emitF2I(self):
+        pass
+
+    @abstractmethod
     def emitNEW(self, lexeme):
         # lexeme: String
         pass
@@ -657,6 +661,9 @@ class JasminCode(MachineCode):
 
     def emitI2F(self):
         return JasminCode.INDENT + "i2f" + JasminCode.END
+
+    def emitF2I(self):
+        return JasminCode.INDENT + "f2i" + JasminCode.END
 
     def emitNEW(self, lexeme):
         # lexeme: String

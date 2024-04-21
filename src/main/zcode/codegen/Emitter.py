@@ -94,13 +94,12 @@ class Emitter():
     def emitALOAD(self, in_, frame):
         # in_: Type
         # frame: Frame
-        # ..., arrayref, index, value -> ...
+        # ..., arrayref, index -> ..., value
 
         frame.pop()
         if type(in_) is NumberType:
             return self.jvm.emitIALOAD()
-        # elif type(in_) is cgen.ArrayPointerType or type(in_) is cgen.ClassType or type(in_) is StringType:
-        elif type(in_) is ClassType or type(in_) is StringType:
+        elif type(in_) in [StringType, ArrayType]:
             return self.jvm.emitAALOAD()
         else:
             raise IllegalOperandException(str(in_))
@@ -148,9 +147,10 @@ class Emitter():
 
         frame.push()
         if type(inType) is NumberType:
+            return self.jvm.emitFLOAD(index)
+        elif type(inType) is BoolType:
             return self.jvm.emitILOAD(index)
-        # elif type(inType) is cgen.ArrayPointerType or type(inType) is cgen.ClassType or type(inType) is StringType:
-        elif type(inType) is ClassType or type(inType) is StringType:
+        elif type(inType) is StringType:
             return self.jvm.emitALOAD(index)
         else:
             raise IllegalOperandException(name)
@@ -183,9 +183,10 @@ class Emitter():
         frame.pop()
 
         if type(inType) is NumberType:
+            return self.jvm.emitFSTORE(index)
+        elif type(inType) is BoolType:
             return self.jvm.emitISTORE(index)
-        # elif type(inType) is cgen.ArrayPointerType or type(inType) is cgen.ClassType or type(inType) is StringType:
-        elif type(inType) is ClassType or type(inType) is StringType:
+        elif type(inType) is StringType:
             return self.jvm.emitASTORE(index)
         else:
             raise IllegalOperandException(name)
@@ -347,15 +348,9 @@ class Emitter():
 
         frame.pop()
         if lexeme == "+":
-            if type(in_) is NumberType:
-                return self.jvm.emitIADD()
-            else:
-                return self.jvm.emitFADD()
+            return self.jvm.emitFADD()
         else:
-            if type(in_) is NumberType:
-                return self.jvm.emitISUB()
-            else:
-                return self.jvm.emitFSUB()
+            return self.jvm.emitFSUB()
 
     '''
     *   generate imul, idiv, fmul or fdiv.
@@ -371,15 +366,9 @@ class Emitter():
 
         frame.pop()
         if lexeme == "*":
-            if type(in_) is NumberType:
-                return self.jvm.emitIMUL()
-            else:
-                return self.jvm.emitFMUL()
+            return self.jvm.emitFMUL()
         else:
-            if type(in_) is NumberType:
-                return self.jvm.emitIDIV()
-            else:
-                return self.jvm.emitFDIV()
+            return self.jvm.emitFDIV()
 
     def emitDIV(self, frame):
         # frame: Frame
@@ -432,7 +421,6 @@ class Emitter():
             # a >= b can be converted to not (a < b)
             # fcmpg: load 1 onto the stack if value2 > value1
             # fcmpl: load 1 onto the stack if value1 > value2
-
             result.append(self.jvm.emitFCMPG() if op in ['<', '>='] else self.jvm.emitFCMPL())
 
             # ifge pops the operand.
@@ -549,12 +537,13 @@ class Emitter():
     '''   generate the end directive for a function.
     '''
 
-    def emitENDMETHOD(self, frame):
+    def emitENDMETHOD(self, frame=None):
         # frame: Frame
 
         buffer = list()
-#        buffer.append(self.jvm.emitLIMITSTACK(frame.getMaxOpStackSize()))
-#        buffer.append(self.jvm.emitLIMITLOCAL(frame.getMaxIndex()))
+        if frame is not None:
+            buffer.append(self.jvm.emitLIMITSTACK(frame.getMaxOpStackSize()))
+            buffer.append(self.jvm.emitLIMITLOCAL(frame.getMaxIndex()))
         buffer.append(self.jvm.emitENDMETHOD())
         return ''.join(buffer)
 
@@ -644,6 +633,9 @@ class Emitter():
 
         return self.jvm.emitI2F()
 
+    def emitF2I(self, frame):
+        return self.jvm.emitF2I()
+
     ''' generate code to return.
     *   <ul>
     *   <li>ireturn if the type is IntegerType or BooleanType
@@ -660,6 +652,12 @@ class Emitter():
         if type(in_) is NumberType:
             frame.pop()
             return self.jvm.emitIRETURN()
+        elif type(in_) is NumberType:
+            frame.pop()
+            return self.jvm.emitFRETURN()
+        if type(in_) is StringType or type(in_) is ArrayType:
+            frame.pop()
+            return self.jvm.emitARETURN()
         elif type(in_) is VoidType:
             return self.jvm.emitRETURN()
 

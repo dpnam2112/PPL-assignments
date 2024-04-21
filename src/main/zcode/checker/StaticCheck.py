@@ -218,10 +218,6 @@ class StaticChecker(BaseVisitor, Utils):
 
         fn_type = self.typeEnv.getFnType(fn_name)
 
-#        if fn_type is not None:
-#            print(fn_type)
-#            return True
-        
         if not fn_type:
             return False
 
@@ -713,8 +709,7 @@ class StaticChecker(BaseVisitor, Utils):
 
         if isinstance(id_type, TypePlaceholder):
             # Infer type of the identifier
-            if (self.typeConstraints == [] or isinstance(self.typeConstraints[-1],
-                                                         TypePlaceholder)):
+            if (self.typeConstraints == [] or isinstance(self.typeConstraints[-1], TypePlaceholder)):
                 raise TypeCannotBeInferred(ast)
 
             # Invalid array constraint is pushed when the index expression is visited.
