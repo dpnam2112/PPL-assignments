@@ -67,7 +67,15 @@ class TypeInferenceVisitor(BaseVisitor):
 
         # key: function's name
         # value: [<list of parameter types>, <return type>]
-        self.funcType = {}
+        self.funcType = {
+            "readNumber": MType([], NumberType()),
+            "readBool": MType([], BoolType()),
+            "readString": MType([], StringType()),
+            "writeNumber": MType([NumberType()], VoidType()),
+            "writeBool": MType([BoolType()], VoidType()),
+            "writeString": MType([StringType()], VoidType())
+        }
+
 
         # name of the function whose body the visitor is in
         self.currentFuncName = None
@@ -110,10 +118,10 @@ class TypeInferenceVisitor(BaseVisitor):
             ast.body.accept(self, param)
         self.currentFuncName = None
 
-    def visitBlock(self, ast: Block, param):
+    def visitBlock(self, ast: Block, vmState: Access):
         self.beginScope()
         for stmt in ast.stmt:
-            stmt.accept(self, param)
+            stmt.accept(self, vmState)
         self.endScope()
 
     def visitReturn(self, ast: Return, param):
@@ -152,10 +160,10 @@ class TypeInferenceVisitor(BaseVisitor):
         ast.updExpr.accept(self, NumberType())
         ast.body.accept(self, param)
 
-    def visitAssign(self, ast: Assign, param):
-        leftType = ast.lhs.accept(self, param)
+    def visitAssign(self, ast: Assign, vmState: Access):
+        leftType = ast.lhs.accept(self, vmState)
         if leftType is None:
-            rightType = ast.rhs.accept(self, param)
+            rightType = ast.rhs.accept(self, vmState)
             ast.lhs.accept(self, rightType)
         else:
             ast.rhs.accept(self, leftType)
@@ -236,20 +244,28 @@ class CodeGenVisitor(BaseVisitor):
 
     The visitor only emits code when it visits a statement or a declaration.
     """
-    def __init__(self, astTree, env, path, typeArr, fnTypes):
+    def __init__(self, astTree, path, typeArr, fnTypes, className):
         self.astTree = astTree
-        self.env = env
         self.path = path
-        self.emitter = Emitter(self.path)
         self.typeArr = typeArr
         self.typeIter = iter(self.typeArr)
         self.fnTypes = fnTypes
         self.globalFrame = Frame("<clinit>", VoidType())
         self.globalVarGen = []
-        self.className = "ZCodeClass"
+        self.className = className
+        self.emitter = Emitter(self.path + f"/{self.className}.j")
+        self.fnTypes["main"] = MType([ArrayType([1], StringType())], VoidType())
 
     def getVarTypePair(self):
         return next(self.typeIter, None)
+
+    def resolveFnType(self, fname):
+        pass
+
+    def convertName(self, name: str):
+        if name in ["readNumber", "writeNumber", "readBool", "writeBool", "readString", "writeString"]:
+            return "io/" + name
+        return self.className + "/" + name
 
     def gen(self):
         vmState = Access(self.globalFrame, [], False)
@@ -257,18 +273,18 @@ class CodeGenVisitor(BaseVisitor):
         self.emitter.emitEPILOG()
 
     def visitProgram(self, ast, vmState: Access):
-        self.emitter.emitPROLOG(self.className, "")
+        self.emitter.printout(self.emitter.emitPROLOG(self.className, ""))
         for decl in ast.decl:
-            decl.accept(self, vmState)
-        self.genInitMethod()
+            vmState = decl.accept(self, vmState)
         self.genClinitMethod()
 
     def genInitMethod(self):
         initFrame = Frame("<init>", VoidType())
-        self.emitter.printout(self.emitter.emitMETHOD("<init>", VoidType(), False, initFrame))
+        self.emitter.printout(self.emitter.emitMETHOD("<init>()", VoidType(), False, initFrame))
         self.emitter.printout(self.emitter.emitLIMITSTACK(1))
         self.emitter.printout(self.emitter.emitLIMITLOCAL(1))
-        self.emitter.printout(self.emitter.emitALOAD(0, initFrame))
+        initFrame.push()
+        self.emitter.printout(self.emitter.emitALOAD(StringType(), initFrame))
         self.emitter.printout(self.emitter.emitRETURN(VoidType(), initFrame))
         self.emitter.printout(self.emitter.jvm.emitENDMETHOD())
 
@@ -279,38 +295,61 @@ class CodeGenVisitor(BaseVisitor):
         The generated code for declaration expressions is in self.globalVarGen. 
         This method should be invoked after all of the declarations are visited.
         """
-        self.emitter.printout(self.emitter.emitMETHOD(self.globalFrame.name, self.globalFrame.returnType, True, self.globalFrame))
+        self.emitter.printout(self.emitter.emitMETHOD(self.globalFrame.name + "()", self.globalFrame.returnType, True, self.globalFrame))
         self.emitter.printout(''.join(self.globalVarGen))
         self.emitter.printout(self.emitter.emitRETURN(self.globalFrame.returnType, self.globalFrame))
-        self.emitter.printout(self.globalFrame)
+        self.emitter.printout(self.emitter.emitENDMETHOD(self.globalFrame))
 
     def visitFuncDecl(self, ast: FuncDecl, vmState: Access):
         if ast.body is None: return
         fname = ast.name.name
+        fnType = self.fnTypes[fname]
         # new Access object to avoid side effect.
-        fnVmState = Access(Frame(fname, self.fnTypes[fname]), vmState.sym, False)
+        fnVmState = Access(Frame(fname, fnType.rettype), vmState.sym, False)
+
+        self.emitter.printout(self.emitter.emitMETHOD(fname, fnType, True, fnVmState.frame))
+        fnVmState.frame.enterScope(True)
+        startLabel, endLabel = fnVmState.frame.getStartLabel(), fnVmState.frame.getEndLabel()
+        self.emitter.printout(self.emitter.emitLABEL(startLabel, fnVmState.frame))
+        if fname == "main":
+            # slot for string argument
+            fnVmState.frame.getNewIndex()
         for paramDecl in ast.param:
              fnVmState = paramDecl.accept(self, fnVmState)
         # generate code for function's body.
         fnVmState = ast.body.accept(self, fnVmState)
-        self.emitter.emitENDMETHOD(fnVmState.frame)
+        if type(fnType.rettype) is VoidType:
+            self.emitter.printout(self.emitter.emitRETURN(VoidType(), fnVmState.frame))
+        self.emitter.printout(self.emitter.emitLABEL(endLabel, fnVmState.frame))
+        self.emitter.printout(self.emitter.emitENDMETHOD(fnVmState.frame))
+        fnVmState.frame.exitScope()
         return vmState
 
     def visitBlock(self, ast: Block, vmState: Access):
+        currentSymLen = len(vmState.sym)
         vmState.frame.enterScope(False)
         startLabel, endLabel = vmState.frame.getStartLabel(), vmState.frame.getEndLabel()
-        self.emitter.emitLABEL(startLabel, vmState.frame)
+        self.emitter.printout(self.emitter.emitLABEL(startLabel, vmState.frame))
         for stmt in ast.stmt:
             vmState = stmt.accept(self, vmState)
         vmState.frame.exitScope()
-        self.emitter.emitLABEL(endLabel, vmState.frame)
+        self.emitter.printout(self.emitter.emitLABEL(endLabel, vmState.frame))
+        vmState.sym = vmState.sym[:currentSymLen]
+        return vmState
+
+    def visitAssign(self, ast: Assign, vmState: Access):
+        rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False))
+        leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
+        self.emitter.printout(rightGen)
+        self.emitter.printout(leftGen)
         return vmState
 
     def visitCallStmt(self, ast: CallStmt, vmState: Access):
         code = []
         code += [expr.accept(self, vmState)[0] for expr in ast.args]
-        fnType = self.fnTypes[ast.name.name]
-        code.append(self.emitter.emitINVOKESTATIC(ast.name.name, fnType, vmState.frame))
+        fname = ast.name.name
+        fnType = self.fnTypes[fname]
+        code.append(self.emitter.emitINVOKESTATIC(self.convertName(fname), fnType, vmState.frame))
         self.emitter.printout(''.join(code))
         return vmState
 
@@ -346,7 +385,7 @@ class CodeGenVisitor(BaseVisitor):
 
         # a tuple: (variable name, variable type)
         varTypePair = self.getVarTypePair()
-        assert varTypePair is not None and type(varTypePair) is tuple and varTypePair[0] == iden.name
+        assert varTypePair is not None and varTypePair[0] == iden.name
         varName, varType = varTypePair
 
         # generate directive and create symbol
@@ -358,8 +397,9 @@ class CodeGenVisitor(BaseVisitor):
             # local variable
             startLabel = vmState.frame.getStartLabel()
             endLabel = vmState.frame.getEndLabel()
-            directive = self.emitter.emitVAR(varType, varName, startLabel, startLabel, endLabel, vmState.frame)
-            varSym = Symbol(name=varName, mtype=varName, value=Index(vmState.frame.getNewIndex()))
+            newSlot = vmState.frame.getNewIndex()
+            directive = self.emitter.emitVAR(newSlot, varName, varType, startLabel, endLabel, vmState.frame)
+            varSym = Symbol(name=varName, mtype=varType, value=Index(newSlot))
 
         self.emitter.printout(directive)
         if ast.varInit is not None:
@@ -368,8 +408,8 @@ class CodeGenVisitor(BaseVisitor):
             assert type(varType) is type(exprType)
             if vmState.frame.name == "<clinit>":
                 # global variable
-                writeVarGen = self.emitter.emitPUTSTATIC(varName, varType, vmState.frame)
-                self.globalVarGen.append(writeVarGen)
+                writeVarGen = self.emitter.emitPUTSTATIC(self.convertName(varName), varType, vmState.frame)
+                self.globalVarGen.append(exprCode + writeVarGen)
             else:
                 # local variable
                 writeVarGen = self.emitter.emitWRITEVAR(varName, varType, varSym.value.value, vmState.frame)
@@ -426,8 +466,9 @@ class CodeGenVisitor(BaseVisitor):
     def visitCallExpr(self, ast: CallExpr, vmState: Access):
         code = []
         code += [expr.accept(self, vmState)[0] for expr in ast.args]
-        fnType = self.fnTypes[ast.name.name]
-        code.append(self.emitter.emitINVOKESTATIC(ast.name.name, fnType, vmState.frame))
+        fname = ast.name.name
+        fnType = self.fnTypes[fname]
+        code.append(self.emitter.emitINVOKESTATIC(self.convertName(fname), fnType, vmState.frame))
         return ''.join(code), fnType.rettype
 
     def visitArrayLiteral(self, ast: ArrayLiteral, vmState: Access):
@@ -457,32 +498,44 @@ class CodeGenVisitor(BaseVisitor):
             arrType = ArrayType(eleType=eleType, size=[float(len(ast.value))])
         return ''.join(codeGen), arrType
 
+    def visitId(self, ast: Id, vmState: Access):
+        sym = next(filter(lambda sym: sym.name == ast.name, reversed(vmState.sym)), None)
+        assert sym is not None
+        if vmState.isLeft:
+            if type(sym.value) is Index:
+                # store value into local variable
+                gen = self.emitter.emitWRITEVAR(sym.name, sym.mtype, sym.value.value, vmState.frame)
+            else:
+                # store value into global variable
+                gen = self.emitter.emitPUTSTATIC(self.convertName(sym.name), sym.mtype, vmState.frame)
+        else:
+            if type(sym.value) is Index:
+                # read local variable
+                gen = self.emitter.emitREADVAR(sym.name, sym.mtype, sym.value.value, vmState.frame)
+            else:
+                # read global variable a.k.a static field 
+                gen = self.emitter.emitGETSTATIC(self.convertName(sym.name), sym.mtype, vmState.frame)
+        return gen, sym.mtype
+
     def visitNumberLiteral(self, ast: NumberLiteral, vmState: Access):
-        return self.emitter.emitPUSHFCONST(ast.value, vmState), NumberType()
+        return self.emitter.emitPUSHCONST(str(ast.value), NumberType(), vmState.frame), NumberType()
 
     def visitBooleanLiteral(self, ast: BooleanLiteral, vmState: Access):
         return self.emitter.emitPUSHICONST(1 if ast.value else 0, vmState.frame), BoolType()
 
     def visitStringLiteral(self, ast: StringLiteral, vmState: Access):
-        return self.emitter.emitPUSHFCONST(ast.value, vmState.frame), StringType()
+        return self.emitter.emitPUSHCONST(ast.value, StringType(), vmState.frame), StringType()
 
 class CodeGenerator:
     def __init__(self):
         self.libName = "io"
 
-    def init(self):
-        pass
-#        return [Symbol("readInt", MType(list(), IntType()), CName(self.libName)),
-#                Symbol("writeInt", MType([IntType()], VoidType()), CName(self.libName)),
-#                Symbol("writeIntLn", MType([IntType()], VoidType()), CName(self.libName)),
-#                Symbol("writeFloat", MType([FloatType()], VoidType()), CName(self.libName))]
-
     def gen(self, ast, path):
         # ast: AST
         # dir_: String
 
-        gl = self.init()
         typeInference = TypeInferenceVisitor(ast)
         typeVarPairs, fnTypes = typeInference.infer()
-        gc = CodeGenVisitor(ast, gl, path, typeVarPairs, fnTypes)
-        gc.visit(ast, None)
+
+        gc = CodeGenVisitor(ast, path, typeVarPairs, fnTypes, "ZCodeClass")
+        gc.gen()

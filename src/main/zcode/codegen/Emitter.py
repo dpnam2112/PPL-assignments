@@ -16,20 +16,22 @@ class Emitter():
     def getJVMType(self, inType):
         typeIn = type(inType)
         if typeIn is NumberType:
-            return "I"
+            return "F"
         elif typeIn is StringType:
             return "Ljava/lang/String;"
         elif typeIn is VoidType:
             return "V"
         elif typeIn is ArrayType:
             return "[" + self.getJVMType(inType.eleType)
+        elif typeIn is BoolType:
+            return "Z"
         elif typeIn is cgen.MType:
             return "(" + "".join(list(map(lambda x: self.getJVMType(x), inType.partype))) + ")" + self.getJVMType(inType.rettype)
 
     def getFullType(self, inType):
         typeIn = type(inType)
         if typeIn is NumberType:
-            return "int"
+            return "float"
         elif typeIn is StringType:
             return "java/lang/String"
         elif typeIn is VoidType:
@@ -62,7 +64,7 @@ class Emitter():
 
         f = float(in_)
         frame.push()
-        rst = "{0:.4f}".format(f)
+        rst = str(f)
         if rst == "0.0" or rst == "1.0" or rst == "2.0":
             return self.jvm.emitFCONST(rst)
         else:
@@ -81,6 +83,7 @@ class Emitter():
             return self.emitPUSHFCONST(in_, frame)
         elif type(typ) is StringType:
             frame.push()
+            in_ = f'"{in_}"'
             return self.jvm.emitLDC(in_)
         else:
             raise IllegalOperandException(in_)
@@ -98,7 +101,7 @@ class Emitter():
 
         frame.pop()
         if type(in_) is NumberType:
-            return self.jvm.emitIALOAD()
+            return self.jvm.emitFALOAD()
         elif type(in_) in [StringType, ArrayType]:
             return self.jvm.emitAALOAD()
         else:
@@ -148,7 +151,7 @@ class Emitter():
         frame.push()
         if type(inType) is NumberType:
             return self.jvm.emitFLOAD(index)
-        elif type(inType) is BoolType:
+        if type(inType) is BoolType:
             return self.jvm.emitILOAD(index)
         elif type(inType) is StringType:
             return self.jvm.emitALOAD(index)
@@ -184,7 +187,7 @@ class Emitter():
 
         if type(inType) is NumberType:
             return self.jvm.emitFSTORE(index)
-        elif type(inType) is BoolType:
+        if type(inType) is BoolType:
             return self.jvm.emitISTORE(index)
         elif type(inType) is StringType:
             return self.jvm.emitASTORE(index)
@@ -313,11 +316,7 @@ class Emitter():
         # in_: Type
         # frame: Frame
         # ..., value -> ..., result
-
-        if type(in_) is NumberType:
-            return self.jvm.emitINEG()
-        else:
-            return self.jvm.emitFNEG()
+        return self.jvm.emitFNEG()
 
     def emitNOT(self, in_, frame):
         # in_: Type
@@ -366,9 +365,15 @@ class Emitter():
 
         frame.pop()
         if lexeme == "*":
-            return self.jvm.emitFMUL()
+            if type(in_) is NumberType:
+                return self.jvm.emitIMUL()
+            else:
+                return self.jvm.emitFMUL()
         else:
-            return self.jvm.emitFDIV()
+            if type(in_) is NumberType:
+                return self.jvm.emitIDIV()
+            else:
+                return self.jvm.emitFDIV()
 
     def emitDIV(self, frame):
         # frame: Frame
@@ -421,6 +426,7 @@ class Emitter():
             # a >= b can be converted to not (a < b)
             # fcmpg: load 1 onto the stack if value2 > value1
             # fcmpl: load 1 onto the stack if value1 > value2
+
             result.append(self.jvm.emitFCMPG() if op in ['<', '>='] else self.jvm.emitFCMPL())
 
             # ifge pops the operand.
@@ -537,13 +543,12 @@ class Emitter():
     '''   generate the end directive for a function.
     '''
 
-    def emitENDMETHOD(self, frame=None):
+    def emitENDMETHOD(self, frame):
         # frame: Frame
 
         buffer = list()
-        if frame is not None:
-            buffer.append(self.jvm.emitLIMITSTACK(frame.getMaxOpStackSize()))
-            buffer.append(self.jvm.emitLIMITLOCAL(frame.getMaxIndex()))
+        buffer.append(self.jvm.emitLIMITSTACK(frame.getMaxOpStackSize()))
+        buffer.append(self.jvm.emitLIMITLOCAL(frame.getMaxIndex()))
         buffer.append(self.jvm.emitENDMETHOD())
         return ''.join(buffer)
 
@@ -651,15 +656,11 @@ class Emitter():
 
         if type(in_) is NumberType:
             frame.pop()
-            return self.jvm.emitIRETURN()
-        elif type(in_) is NumberType:
-            frame.pop()
             return self.jvm.emitFRETURN()
-        if type(in_) is StringType or type(in_) is ArrayType:
-            frame.pop()
-            return self.jvm.emitARETURN()
         elif type(in_) is VoidType:
             return self.jvm.emitRETURN()
+        elif type(in_) is ArrayType or type(in_) is StringType:
+            return self.jvm.emitARETURN()
 
     ''' generate code that represents a label	
     *   @param label the label
@@ -697,7 +698,7 @@ class Emitter():
         result.append(self.jvm.emitSOURCE(name + ".java"))
         result.append(self.jvm.emitCLASS("public " + name))
         result.append(self.jvm.emitSUPER(
-            "java/land/Object" if parent == "" else parent))
+            "java/lang/Object" if parent == "" else parent))
         return ''.join(result)
 
     def emitLIMITSTACK(self, num):
@@ -710,9 +711,8 @@ class Emitter():
         return self.jvm.emitLIMITLOCAL(num)
 
     def emitEPILOG(self):
-        file = open(self.filename, "w")
-        file.write(''.join(self.buff))
-        file.close()
+        with open(self.filename, "w") as file:
+            file.write(''.join(self.buff))
 
     ''' print out the code to screen
     *   @param in the code to be printed out

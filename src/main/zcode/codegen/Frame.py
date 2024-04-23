@@ -1,4 +1,5 @@
 from Utils import *
+from CodeGenError import *
 
 
 class Frame():
