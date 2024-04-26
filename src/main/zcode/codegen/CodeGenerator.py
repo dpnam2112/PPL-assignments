@@ -48,6 +48,45 @@ class Access():
         self.sym = sym
         self.isLeft = isLeft
         self.isFirst = isFirst
+        self.falseLabel = None
+
+        # label ids used for 'and' expressions.
+        self.andLoadBoolLabel = None
+        self.andExitLabel = None
+
+        # label ids used for 'or' expressions.
+        self.orLoadBoolLabel = None
+        self.orExitLabel = None
+
+        # label used for conditional expression in if statement.
+        self.ifFalseLabel = None
+        self.ifTrueLabel = None
+
+        self.requireBoolResult = None
+
+    def withLogicalLabel(self, op, loadBoolLabel, exitLabel):
+        newVmState = Access(self.frame, self.sym, self.isLeft)
+        if op == 'and':
+            newVmState.andExitLabel = exitLabel
+            newVmState.andLoadBoolLabel = loadBoolLabel
+        else:
+            newVmState.orExitLabel = exitLabel
+            newVmState.orLoadBoolLabel = loadBoolLabel
+        return newVmState
+
+    def withIfLabel(self, ifTrueLabel, ifFalseLabel):
+        newVmState = Access(self.frame, self.sym, self.isLeft)
+        newVmState.ifFalseLabel = ifFalseLabel
+        newVmState.ifTrueLabel = ifTrueLabel
+        return newVmState
+
+    def getLogicExitLabel(self, op):
+        return self.andExitLabel if op == 'and' else self.orExitLabel
+
+    def withRequireBoolResult(self):
+        newVmState = Access(self.frame, self.sym, self.isLeft)
+        newVmState.requireBoolResult = True
+        return newVmState
 
 class Val(ABC):
     pass
@@ -121,7 +160,7 @@ class TypeInferenceVisitor(BaseVisitor):
     def visitBlock(self, ast: Block, vmState: Access):
         self.beginScope()
         for stmt in ast.stmt:
-            stmt.accept(self, vmState)
+            vmState = stmt.accept(self, vmState)
         self.endScope()
 
     def visitReturn(self, ast: Return, param):
@@ -338,7 +377,7 @@ class CodeGenVisitor(BaseVisitor):
         return vmState
 
     def visitAssign(self, ast: Assign, vmState: Access):
-        rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False))
+        rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
         leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
         self.emitter.printout(rightGen)
         self.emitter.printout(leftGen)
@@ -354,7 +393,22 @@ class CodeGenVisitor(BaseVisitor):
         return vmState
 
     def visitIf(self, ast: If, vmState: Access):
-        pass
+        ifParts = [(ast.expr, ast.thenStmt)] + ast.elifStmt
+
+        for expr, stmt in ifParts:
+            ifTrueLabelId, ifFalseLabelId = vmState.frame.getNewLabel(), vmState.frame.getNewLabel()
+            _vmState = vmState.withIfLabel(ifTrueLabelId, ifFalseLabelId)
+            exprGen, _ = expr.accept(self, _vmState)
+            self.emitter.printout(exprGen)
+            self.emitter.printout(self.emitter.emitIFFALSE(ifFalseLabelId, vmState.frame))
+            self.emitter.printout(self.emitter.emitLABEL(ifTrueLabelId, vmState.frame))
+            stmt.accept(self, vmState)
+            self.emitter.printout(self.emitter.emitLABEL(ifFalseLabelId, vmState.frame))
+
+        if ast.elseStmt is not None:
+            ast.elseStmt.accept(self, vmState)
+
+        return vmState
 
     def visitFor(self, ast: For, vmState: Access):
         pass
@@ -404,7 +458,7 @@ class CodeGenVisitor(BaseVisitor):
         self.emitter.printout(directive)
         if ast.varInit is not None:
             # generate code for variable initialization
-            exprCode, exprType = ast.varInit.accept(self, vmState)
+            exprCode, exprType = ast.varInit.accept(self, vmState.withRequireBoolResult())
             assert type(varType) is type(exprType)
             if vmState.frame.name == "<clinit>":
                 # global variable
@@ -419,32 +473,94 @@ class CodeGenVisitor(BaseVisitor):
         return vmState
 
     def visitBinaryOp(self, ast: BinaryOp, vmState: Access):
-        leftOperandGen, leftType = ast.left.accept(self, vmState)
-        rightOperandGen, rightType = ast.right.accept(self, vmState)
+        if ast.op not in ['and', 'or']:
+            leftOperandGen, leftType = ast.left.accept(self, vmState)
+            rightOperandGen, rightType = ast.right.accept(self, vmState)
 
-        if ast.op in ['+', '-']:
-            opGen = self.emitter.emitADDOP(ast.op, leftType, vmState.frame)
-        elif ast.op in ['*', '/']:
-            opGen = self.emitter.emitMULOP(ast.op, leftType, vmState.frame)
-        elif ast.op == '%':
-            opGen = self.emitter.emitMOD(ast.op, vmState.frame)
-        elif ast.op in ['>', '<', '=', '<=', '>=', '==', '=', '!=']:
-            opGen = self.emitter.emitREOP(ast.op, leftType, vmState.frame)
-        elif ast.op in ['and', 'or']:
-            opGen = None
-        else:
-            opGen = None
+            if ast.op in ['+', '-']:
+                opGen = self.emitter.emitADDOP(ast.op, leftType, vmState.frame)
+            elif ast.op in ['*', '/']:
+                opGen = self.emitter.emitMULOP(ast.op, leftType, vmState.frame)
+            elif ast.op == '%':
+                opGen = self.emitter.emitMOD(ast.op, vmState.frame)
+            elif ast.op in ['>', '<', '=', '<=', '>=', '==', '=', '!=']:
+                opGen = self.emitter.emitREOP(ast.op, leftType, vmState.frame)
+            else:
+                opGen = None
 
-        assert opGen is not None
-        return (leftOperandGen + rightOperandGen + opGen), getResultType(ast.op)
+            return (leftOperandGen + rightOperandGen + opGen), getResultType(ast.op)
+        elif ast.op in ['and', 'or'] and not vmState.requireBoolResult:
+            # if the expression's result is not required, e.g, conditional expressions,
+            # then just check the result of the operands and perform the jump.
+            trueLabel, falseLabel = vmState.ifTrueLabel, vmState.ifFalseLabel
+
+            # create new Access object, with some additional metadata
+            # the result of each operand are required.
+            _vmState = vmState.withRequireBoolResult()
+
+            leftGen, leftType = ast.left.accept(self, _vmState)
+            rightGen, rightType = ast.right.accept(self, _vmState)
+
+
+            if ast.op == 'and':
+                jmpIfFalse = self.emitter.emitIFFALSE(falseLabel, vmState.frame)
+                codegen = [leftGen, jmpIfFalse, rightGen]
+            else:
+                jmpIfTrue = self.emitter.emitIFTRUE(trueLabel, vmState.frame)
+                codegen = [leftGen, jmpIfTrue, rightGen]
+            return ''.join(codegen), BoolType()
+        elif ast.op == 'and' or ast.op == 'or':
+            # TODO: Implement code generation in the case that the result is required
+            loadBoolLabelId, exitLabelId = None, None
+
+            if ast.op == 'and':
+                if not (vmState.andLoadBoolLabel and vmState.andExitLabel):
+                    loadBoolLabelId, exitLabelId = vmState.frame.getNewLabel(), vmState.frame.getNewLabel()
+                else:
+                    loadBoolLabelId, exitLabelId = vmState.andLoadBoolLabel, vmState.andExitLabel
+            else:
+                if not (vmState.orLoadBoolLabel or vmState.orExitLabel):
+                    loadBoolLabelId, exitLabelId = vmState.frame.getNewLabel(), vmState.frame.getNewLabel()
+                else:
+                    loadBoolLabelId, exitLabelId = vmState.orLoadBoolLabel, vmState.orExitLabel
+
+            # create new Access object, with some additional metadata
+            # the result of each operand are required.
+            if ast.op == 'and':
+                _vmState = vmState.withLogicalLabel('and', loadBoolLabelId, exitLabelId).withRequireBoolResult()
+            else:
+                _vmState = vmState.withLogicalLabel('or', loadBoolLabelId, exitLabelId).withRequireBoolResult()
+
+            # generate code for operands
+            # the result of lhs is always loaded onto the stack
+            leftGen, leftType = ast.left.accept(self, _vmState)
+            rightGen, rightType = ast.right.accept(self, _vmState)
+
+            if ast.op == 'and':
+                jmpToLoadBool = self.emitter.emitIFFALSE(loadBoolLabelId, vmState.frame)
+            else:
+                jmpToLoadBool = self.emitter.emitIFTRUE(loadBoolLabelId, vmState.frame)
+
+
+            codegen = [leftGen, jmpToLoadBool, rightGen]
+
+            if vmState.andLoadBoolLabel is None and vmState.andExitLabel is None:
+                jmpToExit = self.emitter.emitGOTO(exitLabelId, vmState.frame)
+                loadBoolLabel = self.emitter.emitLABEL(loadBoolLabelId, vmState.frame)
+                loadBoolGen = self.emitter.emitPUSHCONST("false" if ast.op == 'and' else 'true', BoolType(), vmState.frame)
+                exitLabel = self.emitter.emitLABEL(exitLabelId, vmState.frame)
+
+                codegen += [jmpToExit, loadBoolLabel, loadBoolGen, exitLabel]
+
+            return ''.join(codegen), BoolType()
 
     def visitUnaryOp(self, ast: UnaryOp, vmState: Access):
         operandCode, operandType = ast.operand.accept(self, vmState)
-        if ast.operand == 'not':
-            operatorCode = self.emitter.emitNOT(operandType, vmState)
+        if ast.op == 'not':
+            operatorCode = self.emitter.emitNOT(operandType, vmState.frame)
         else:
             # ast.op == '-', use ineg
-            operatorCode = self.emitter.emitNEGOP(ast.operand, vmState.frame)
+            operatorCode = self.emitter.emitNEGOP(ast.op, vmState.frame)
         return operandCode + operatorCode, operandType
 
     def visitArrayCell(self, ast: ArrayCell, vmState: Access):

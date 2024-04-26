@@ -76,7 +76,8 @@ class Emitter():
     *    @param typ the type of the constant
     '''
 
-    def emitPUSHCONST(self, in_, typ, frame): # in_: String typ: Type
+    def emitPUSHCONST(self, in_, typ, frame):
+        # in_: String typ: Type
         # frame: Frame
 
         if type(typ) is NumberType:
@@ -85,6 +86,8 @@ class Emitter():
             frame.push()
             in_ = f'"{in_}"'
             return self.jvm.emitLDC(in_)
+        elif type(typ) is BoolType:
+            return self.emitPUSHICONST(1 if in_ == "true" else 0, frame)
         else:
             raise IllegalOperandException(in_)
 
@@ -365,15 +368,9 @@ class Emitter():
 
         frame.pop()
         if lexeme == "*":
-            if type(in_) is NumberType:
-                return self.jvm.emitIMUL()
-            else:
-                return self.jvm.emitFMUL()
+            return self.jvm.emitFMUL()
         else:
-            if type(in_) is NumberType:
-                return self.jvm.emitIDIV()
-            else:
-                return self.jvm.emitFDIV()
+            return self.jvm.emitFDIV()
 
     def emitDIV(self, frame):
         # frame: Frame
@@ -424,78 +421,83 @@ class Emitter():
         if op in ['<', '>', '<=', '>=']:
             # a <= b can be converted to not (a > b)
             # a >= b can be converted to not (a < b)
-            # fcmpg: load 1 onto the stack if value2 > value1
-            # fcmpl: load 1 onto the stack if value1 > value2
+            # fcmpl: load 1 onto the stack if value2 > value1
 
-            result.append(self.jvm.emitFCMPG() if op in ['<', '>='] else self.jvm.emitFCMPL())
+            result.append(self.jvm.emitFCMPL())
+            frame.push()
 
             # ifge pops the operand.
-            result.append(self.jvm.emitIFGE(labelLoadBool))
+            result.append(self.jvm.emitIFGT(labelLoadBool) if op in ['>', '<='] else self.jvm.emitIFLT(labelLoadBool))
             frame.pop()
 
-            result.append(self.jvm.emitBIPUSH(1 if op in ['>=', '<='] else 0))
+            result.append(self.jvm.emitICONST(1 if op in ['>=', '<='] else 0))
             result.append(self.jvm.emitGOTO(labelDone))
             result.append(self.jvm.emitLABEL(labelLoadBool))
-            result.append(self.jvm.emitBIPUSH(1 if op in ['<', '>'] else 0))
+            result.append(self.jvm.emitICONST(1 if op in ['<', '>'] else 0))
 
+            # push the 
             frame.push()
         elif op in ['=', '!=']:
-            # fcmpg: load 0 onto the stack if value2 equals to value1.
+            # fcmpl: load 0 onto the stack if value2 equals to value1.
             # ifeq: jump to the label if the top value on the stack is equal to 0.
 
             result.append(self.jvm.emitFCMPL())
+            frame.push()
 
             # ifeq pops the operand.
             result.append(self.jvm.emitIFEQ(labelLoadBool))
             frame.pop()
 
-            result.append(self.emitPUSHBOOLCONST(op != '=', frame))
+            result.append(self.jvm.emitICONST(1 if op != '=' else 0))
             result.append(self.jvm.emitGOTO(labelDone))
             result.append(self.jvm.emitLABEL(labelLoadBool))
-            result.append(self.emitPUSHBOOLCONST(op == '=', frame))
+            result.append(self.jvm.emitICONST(1 if op == '=' else 0))
 
             frame.push()
         elif op in ['==']:
             # if_acmpne: jump to the label if value1 == value2.
 
             result.append(self.jvm.emitIFACMPEQ(labelLoadBool))
-            result.append(self.jvm.emitBIPUSH(0))
+            result.append(self.jvm.emitICONST(0))
             result.append(self.jvm.emitGOTO(labelDone))
             result.append(self.jvm.emitLABEL(labelLoadBool))
-            result.append(self.jvm.emitBIPUSH(1))
+            result.append(self.jvm.emitICONST(1))
 
             frame.push()
+
         result.append(self.jvm.emitLABEL(labelDone))
         return ''.join(result)
 
-    def emitRELOP(self, op, in_, trueLabel, falseLabel, frame):
-        # op: String
+    def emitREJMP(self, op, in_, falseLabel, frame):
         # in_: Type
-        # trueLabel: Int
-        # falseLabel: Int
         # frame: Frame
         # ..., value1, value2 -> ..., result
 
         result = list()
+        frame.pop()
+        frame.pop()
+
+        result.append(self.jvm.emitFCMPL())
+        frame.push()
+
+        if op == '>':
+            result.append(self.jvm.emitIFLE(falseLabel))
+        elif op == '<=':
+            result.append(self.jvm.emitIFGT(falseLabel))
+        elif op == '<':
+            result.append(self.jvm.emitIFGE(falseLabel))
+        elif op == '>=':
+            result.append(self.jvm.emitIFLT(falseLabel))
+        if op == '=':
+            result.append(self.jvm.emitIFNE(falseLabel))
+        elif op == '!=':
+            result.append(self.jvm.emitIFEQ(falseLabel))
+        elif op == '==':
+            result.append(self.jvm.emitIFACMPNE(falseLabel))
+        else:
+            raise IllegalOperandException(op)
 
         frame.pop()
-        frame.pop()
-        if op == ">":
-            result.append(self.jvm.emitIFICMPLE(falseLabel))
-            result.append(self.emitGOTO(trueLabel, frame))
-        elif op == ">=":
-            result.append(self.jvm.emitIFICMPLT(falseLabel))
-        elif op == "<":
-            result.append(self.jvm.emitIFICMPGE(falseLabel))
-        elif op == "<=":
-            result.append(self.jvm.emitIFICMPGT(falseLabel))
-        elif op == "!=":
-            result.append(self.jvm.emitIFICMPEQ(falseLabel))
-        elif op == "=":
-            result.append(self.jvm.emitIFICMPNE(falseLabel))
-        elif op == "==":
-            result.append(self.jvm.emitIFACMPNE(falseLabel))
-        result.append(self.jvm.emitGOTO(trueLabel))
         return ''.join(result)
 
     def emitARRAY(self, arrType: ArrayType, frame):
