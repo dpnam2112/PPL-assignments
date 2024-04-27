@@ -606,17 +606,20 @@ class CheckCodeGenSuite(unittest.TestCase):
     def test_single_tc(self):
         inp = """
         number x
-        func f(number _x, bool Ret) begin
-            x <- _x
-            return Ret
-        end
 
-        bool y <- f(1.0, true) and f(2.0, false) and f(3.0, true) or f(4.0, true) or f(5.0, false) and f(6.0, true)
+        func f(number _x, bool Ret)
+
+        bool y <- f(1.0, true) and f(2.0, false) and f(3.0, true) or f(4.0, false) or f(5.0, false) and f(6.0, false)
 
         func main() begin
             writeBool(y)
             writeNumber(x)
         end
+
+        func f(number _x, bool Ret) begin
+            x <- _x
+            return Ret
+        end
         """
-        expect = "true6.0"
+        expect = "false5.0"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_bool_expr_2"))

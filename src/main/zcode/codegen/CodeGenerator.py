@@ -162,9 +162,9 @@ class TypeInferenceVisitor(BaseVisitor):
         self.currentFuncName = ast.name.name
         params = tuple(map(lambda decl: decl.varType, ast.param))
         self.funcType[self.currentFuncName] = MType(params, None)
-        for paramDecl in ast.param:
-            paramDecl.accept(self, None)
         if ast.body is not None:
+            for paramDecl in ast.param:
+                paramDecl.accept(self, None)
             ast.body.accept(self, param)
         self.currentFuncName = None
 
@@ -350,27 +350,36 @@ class CodeGenVisitor(BaseVisitor):
         self.emitter.printout(self.emitter.emitENDMETHOD(self.globalFrame))
 
     def visitFuncDecl(self, ast: FuncDecl, vmState: Access):
-        if ast.body is None: return
+        if ast.body is None: return vmState
+
         fname = ast.name.name
         fnType = self.fnTypes[fname]
         # new Access object to avoid side effect.
         fnVmState = Access(Frame(fname, fnType.rettype), vmState.sym, False)
 
         self.emitter.printout(self.emitter.emitMETHOD(fname, fnType, True, fnVmState.frame))
+
+        # generate labels for function's scope
         fnVmState.frame.enterScope(True)
         startLabel, endLabel = fnVmState.frame.getStartLabel(), fnVmState.frame.getEndLabel()
         self.emitter.printout(self.emitter.emitLABEL(startLabel, fnVmState.frame))
+
         if fname == "main":
-            # slot for string argument
+            # slot for the argument of type String[] in the function 'main'
             fnVmState.frame.getNewIndex()
+
         for paramDecl in ast.param:
              fnVmState = paramDecl.accept(self, fnVmState)
+
         # generate code for function's body.
         fnVmState = ast.body.accept(self, fnVmState)
+
         if type(fnType.rettype) is VoidType:
             self.emitter.printout(self.emitter.emitRETURN(VoidType(), fnVmState.frame))
+
         self.emitter.printout(self.emitter.emitLABEL(endLabel, fnVmState.frame))
         self.emitter.printout(self.emitter.emitENDMETHOD(fnVmState.frame))
+
         fnVmState.frame.exitScope()
         return vmState
 
