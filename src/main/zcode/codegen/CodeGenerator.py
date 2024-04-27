@@ -505,8 +505,12 @@ class CodeGenVisitor(BaseVisitor):
                 opGen = self.emitter.emitMOD(ast.op, vmState.frame)
             elif ast.op in ['>', '<', '=', '<=', '>=', '==', '=', '!=']:
                 opGen = self.emitter.emitREOP(ast.op, leftType, vmState.frame)
+            elif ast.op == '...':
+                concatMethodName = "java/lang/String/concat"
+                methodType = MType([StringType()], StringType())
+                opGen = self.emitter.emitINVOKEVIRTUAL(concatMethodName, methodType, vmState.frame)
             else:
-                opGen = None
+                raise ValueError(ast.op)
 
             return (leftOperandGen + rightOperandGen + opGen), getResultType(ast.op)
         elif ast.op in ['and', 'or'] and not vmState.requireBoolResult:
@@ -520,7 +524,6 @@ class CodeGenVisitor(BaseVisitor):
 
             leftGen, leftType = ast.left.accept(self, _vmState)
             rightGen, rightType = ast.right.accept(self, _vmState)
-
 
             if ast.op == 'and':
                 jmpIfFalse = self.emitter.emitIFFALSE(falseLabel, vmState.frame)

@@ -529,19 +529,22 @@ class CheckCodeGenSuite(unittest.TestCase):
 
         inp = """
         number x
-        func f(number _x, bool Ret) begin
-            x <- _x
-            return Ret
-        end
 
-        bool y <- f(1.0, true) and f(2.0, false) and f(3.0, true) or f(4.0, true) or f(5.0, false) and f(6.0, true)
+        func f(number _x, bool Ret)
+
+        bool y <- f(1.0, true) and f(2.0, false) and f(3.0, true) or f(4.0, false) or f(5.0, false) and f(6.0, false)
 
         func main() begin
             writeBool(y)
             writeNumber(x)
         end
+
+        func f(number _x, bool Ret) begin
+            x <- _x
+            return Ret
+        end
         """
-        expect = "true6.0"
+        expect = "false5.0"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_bool_expr_2"))
 
     def test_branch_stmt(self):
@@ -603,23 +606,22 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = "..."
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_branch_stmt_5"))
 
-    def test_single_tc(self):
+    def test_concat(self):
         inp = """
-        number x
-
-        func f(number _x, bool Ret)
-
-        bool y <- f(1.0, true) and f(2.0, false) and f(3.0, true) or f(4.0, false) or f(5.0, false) and f(6.0, false)
-
+        func firstName() return "Harry "
+        func lastName() return "Potter"
         func main() begin
-            writeBool(y)
-            writeNumber(x)
-        end
-
-        func f(number _x, bool Ret) begin
-            x <- _x
-            return Ret
+            writeString((firstName() ... lastName()) ... ".")
         end
         """
-        expect = "false5.0"
+        expect = "Harry Potter."
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_concat"))
+
+    def test_single_tc(self):
+        inp = """
+        func main() begin
+            writeString("Hello " ... "world")
+        end
+        """
+        expect = "Hello world"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_bool_expr_2"))
