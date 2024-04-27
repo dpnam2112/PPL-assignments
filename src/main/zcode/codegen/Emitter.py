@@ -1,4 +1,4 @@
-from CodeGenError import IllegalOperandException
+from CodeGenError import IllegalOperandException, IllegalRuntimeException
 from Utils import *
 # from StaticCheck import *
 # from StaticError import *
@@ -10,6 +10,7 @@ from AST import *
 class Emitter():
     def __init__(self, filename):
         self.filename = filename
+        self.globalVarDirectives = list()
         self.buff = list()
         self.jvm = JasminCode()
 
@@ -659,10 +660,16 @@ class Emitter():
         if type(in_) is NumberType:
             frame.pop()
             return self.jvm.emitFRETURN()
+        elif type(in_) is BoolType:
+            frame.pop()
+            return self.jvm.emitIRETURN()
         elif type(in_) is VoidType:
             return self.jvm.emitRETURN()
         elif type(in_) is ArrayType or type(in_) is StringType:
+            frame.pop()
             return self.jvm.emitARETURN()
+        else:
+            raise IllegalRuntimeException(in_)
 
     ''' generate code that represents a label	
     *   @param label the label
@@ -716,6 +723,11 @@ class Emitter():
         with open(self.filename, "w") as file:
             file.write(''.join(self.buff))
 
+    def emitPROGRAM(self, className, parentClass):
+        prolog = self.emitPROLOG(className, parentClass)
+        with open(self.filename, "w") as file:
+            file.write(prolog + ''.join(self.globalVarDirectives + self.buff))
+
     ''' print out the code to screen
     *   @param in the code to be printed out
     '''
@@ -723,6 +735,9 @@ class Emitter():
     def printout(self, in_):
         # in_: String
         self.buff.append(in_)
+
+    def printoutGlobalDirective(self, in_):
+        self.globalVarDirectives.append(in_)
 
     def clearBuff(self):
         self.buff.clear()

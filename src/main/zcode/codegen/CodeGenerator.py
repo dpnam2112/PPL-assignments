@@ -64,27 +64,39 @@ class Access():
 
         self.requireBoolResult = None
 
+    def __cloneAccess(self):
+        access = Access(self.frame, self.sym, self.isLeft, self.isFirst)
+        access.andLoadBoolLabel = self.andLoadBoolLabel
+        access.andExitLabel = self.andExitLabel
+        access.orLoadBoolLabel = self.orLoadBoolLabel
+        access.orExitLabel = self.orExitLabel
+        access.ifFalseLabel = self.ifFalseLabel
+        access.ifTrueLabel = self.ifTrueLabel
+        access.requireBoolResult = self.requireBoolResult
+        return access
+
     def withLogicalLabel(self, op, loadBoolLabel, exitLabel):
-        newVmState = Access(self.frame, self.sym, self.isLeft)
+        newVmState = self.__cloneAccess()
         if op == 'and':
             newVmState.andExitLabel = exitLabel
             newVmState.andLoadBoolLabel = loadBoolLabel
+            newVmState.orLoadBoolLabel = None
+            newVmState.orExitLabel = None
         else:
             newVmState.orExitLabel = exitLabel
             newVmState.orLoadBoolLabel = loadBoolLabel
+            newVmState.andLoadBoolLabel = None
+            newVmState.andExitLabel = None
         return newVmState
 
     def withIfLabel(self, ifTrueLabel, ifFalseLabel):
-        newVmState = Access(self.frame, self.sym, self.isLeft)
-        newVmState.ifFalseLabel = ifFalseLabel
+        newVmState = self.__cloneAccess()
         newVmState.ifTrueLabel = ifTrueLabel
+        newVmState.ifFalseLabel = ifFalseLabel
         return newVmState
 
-    def getLogicExitLabel(self, op):
-        return self.andExitLabel if op == 'and' else self.orExitLabel
-
     def withRequireBoolResult(self):
-        newVmState = Access(self.frame, self.sym, self.isLeft)
+        newVmState = self.__cloneAccess()
         newVmState.requireBoolResult = True
         return newVmState
 
@@ -94,7 +106,6 @@ class Val(ABC):
 class Index(Val):
     def __init__(self, value):
         self.value = value
-
 
 class CName(Val):
     def __init__(self, value):
@@ -309,10 +320,9 @@ class CodeGenVisitor(BaseVisitor):
     def gen(self):
         vmState = Access(self.globalFrame, [], False)
         self.astTree.accept(self, vmState)
-        self.emitter.emitEPILOG()
+        self.emitter.emitPROGRAM(self.className, "")
 
     def visitProgram(self, ast, vmState: Access):
-        self.emitter.printout(self.emitter.emitPROLOG(self.className, ""))
         for decl in ast.decl:
             vmState = decl.accept(self, vmState)
         self.genClinitMethod()
@@ -447,6 +457,7 @@ class CodeGenVisitor(BaseVisitor):
             # global variable
             directive = self.emitter.emitATTRIBUTE(iden.name, varType, False, None)
             varSym = Symbol(name=varName, mtype=varType, value=CName(self.className))
+            self.emitter.printoutGlobalDirective(directive)
         else:
             # local variable
             startLabel = vmState.frame.getStartLabel()
@@ -454,8 +465,8 @@ class CodeGenVisitor(BaseVisitor):
             newSlot = vmState.frame.getNewIndex()
             directive = self.emitter.emitVAR(newSlot, varName, varType, startLabel, endLabel, vmState.frame)
             varSym = Symbol(name=varName, mtype=varType, value=Index(newSlot))
+            self.emitter.printout(directive)
 
-        self.emitter.printout(directive)
         if ast.varInit is not None:
             # generate code for variable initialization
             exprCode, exprType = ast.varInit.accept(self, vmState.withRequireBoolResult())
@@ -496,7 +507,7 @@ class CodeGenVisitor(BaseVisitor):
 
             # create new Access object, with some additional metadata
             # the result of each operand are required.
-            _vmState = vmState.withRequireBoolResult()
+            _vmState = vmState.withRequireBoolResult().withLogicalLabel(ast.op, trueLabel, falseLabel)
 
             leftGen, leftType = ast.left.accept(self, _vmState)
             rightGen, rightType = ast.right.accept(self, _vmState)
@@ -526,10 +537,7 @@ class CodeGenVisitor(BaseVisitor):
 
             # create new Access object, with some additional metadata
             # the result of each operand are required.
-            if ast.op == 'and':
-                _vmState = vmState.withLogicalLabel('and', loadBoolLabelId, exitLabelId).withRequireBoolResult()
-            else:
-                _vmState = vmState.withLogicalLabel('or', loadBoolLabelId, exitLabelId).withRequireBoolResult()
+            _vmState = vmState.withLogicalLabel(ast.op, loadBoolLabelId, exitLabelId).withRequireBoolResult()
 
             # generate code for operands
             # the result of lhs is always loaded onto the stack
@@ -544,10 +552,17 @@ class CodeGenVisitor(BaseVisitor):
 
             codegen = [leftGen, jmpToLoadBool, rightGen]
 
-            if vmState.andLoadBoolLabel is None and vmState.andExitLabel is None:
+            if vmState.andLoadBoolLabel is None and vmState.andExitLabel is None and ast.op == 'and':
                 jmpToExit = self.emitter.emitGOTO(exitLabelId, vmState.frame)
                 loadBoolLabel = self.emitter.emitLABEL(loadBoolLabelId, vmState.frame)
-                loadBoolGen = self.emitter.emitPUSHCONST("false" if ast.op == 'and' else 'true', BoolType(), vmState.frame)
+                loadBoolGen = self.emitter.emitPUSHCONST("false", BoolType(), vmState.frame)
+                exitLabel = self.emitter.emitLABEL(exitLabelId, vmState.frame)
+
+                codegen += [jmpToExit, loadBoolLabel, loadBoolGen, exitLabel]
+            elif vmState.orLoadBoolLabel is None and vmState.orLoadBoolLabel is None and ast.op == 'or':
+                jmpToExit = self.emitter.emitGOTO(exitLabelId, vmState.frame)
+                loadBoolLabel = self.emitter.emitLABEL(loadBoolLabelId, vmState.frame)
+                loadBoolGen = self.emitter.emitPUSHCONST("true", BoolType(), vmState.frame)
                 exitLabel = self.emitter.emitLABEL(exitLabelId, vmState.frame)
 
                 codegen += [jmpToExit, loadBoolLabel, loadBoolGen, exitLabel]
