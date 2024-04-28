@@ -23,7 +23,7 @@ class Emitter():
         elif typeIn is VoidType:
             return "V"
         elif typeIn is ArrayType:
-            return "[" + self.getJVMType(inType.eleType)
+            return "[" * len(inType.size) + self.getJVMType(inType.eleType)
         elif typeIn is BoolType:
             return "Z"
         elif typeIn is cgen.MType:
@@ -122,6 +122,8 @@ class Emitter():
 
         if type(in_) is NumberType:
             return self.jvm.emitFASTORE()
+        if type(in_) is BoolType:
+            return self.jvm.emitBASTORE()
         elif type(in_) in [StringType, ArrayType]:
             return self.jvm.emitAASTORE()
         else:
@@ -193,10 +195,10 @@ class Emitter():
             return self.jvm.emitFSTORE(index)
         if type(inType) is BoolType:
             return self.jvm.emitISTORE(index)
-        elif type(inType) is StringType:
+        elif type(inType) in [StringType, ArrayType]:
             return self.jvm.emitASTORE(index)
         else:
-            raise IllegalOperandException(name)
+            raise IllegalOperandException(inType)
 
     ''' generate the second instruction for array cell access
     *
@@ -501,33 +503,48 @@ class Emitter():
         frame.pop()
         return ''.join(result)
 
-    def emitARRAY(self, arrType: ArrayType, frame):
-        result = []
-        # stack: ... -> ... , <int>
-        self.emitPUSHICONST(arrType.size[0], frame)
-        if len(arrType.size) == 1:
-            result.append(self.jvm.emitNEWARRAY(self.getJVMType(arrType.eleType)))
+    def emitVARINIT(self, varType, frame):
+        if type(varType) is NumberType:
+            return self.emitPUSHCONST(0, varType, frame)
+        elif type(varType) is BoolType:
+            return self.emitPUSHCONST("false", varType, frame)
+        elif type(varType) is StringType:
+            return self.emitPUSHCONST("", varType, frame)
+        elif type(varType) is ArrayType:
+            code = []
+            if len(varType.size) == 1:
+                code.append(self.emitPUSHICONST(int(varType.size[0]), frame))
+                code.append(self.emitNEWARRAY(varType.eleType, frame))
+            else:
+                code += [ self.emitPUSHICONST(int(dim), frame) for dim in varType.size ]
+                code.append(self.jvm.emitMULTIANEWARRAY(self.getJVMType(varType), len(varType.size)))
+            return ''.join(code)
         else:
-            result.append(self.jvm.emitANEWARRAY(self.getJVMType(arrType.eleType)))
-        # pop array size from the stack
-        frame.pop()
+            raise IllegalOperandException(varType)
 
-    def emitLOADARRITEM(self, eleType, idx, frame):
-        # stack's precondition: ..., arr-ref, arr-ref, value
-        # stack's postcondition: arr-ref
+    def emitNEWARRAY(self, arrType: ArrayType, frame):
         result = []
-        result.append(self.jvm.emitBIPUSH(idx))
+
+        result.append(self.emitPUSHICONST(int(arrType.size[0]), frame))
+
+        if len(arrType.size) == 1:
+            if type(arrType.eleType) is NumberType:
+                lexeme = "float"
+                result.append(self.jvm.emitNEWARRAY(lexeme))
+            elif type(arrType.eleType) is BoolType:
+                lexeme = "boolean"
+                result.append(self.jvm.emitNEWARRAY(lexeme))
+            else:
+                lexeme = "java/lang/String"
+                result.append(self.jvm.emitANEWARRAY(lexeme))
+        else:
+            subArrType = ArrayType(arrType.size[1:], arrType.eleType)
+            result.append(self.jvm.emitANEWARRAY(self.getJVMType(subArrType)))
+
+        frame.pop()
         frame.push()
-        if type(eleType) is NumberType:
-            result.append(self.jvm.emitFASTORE())
-        else:   # StringType or ArrayType
-            result.append(self.jvm.emitAASTORE())
-        frame.pop()
-        frame.pop()
-        frame.pop()
+
         return ''.join(result)
-
-
 
     '''   generate the method directive for a function.
     *   @param lexeme the qualified name of the method(i.e., class-name/method-name).

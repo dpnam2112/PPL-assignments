@@ -64,7 +64,7 @@ class Access():
 
         self.requireBoolResult = None
 
-    def __cloneAccess(self):
+    def cloneAccess(self):
         access = Access(self.frame, self.sym, self.isLeft, self.isFirst)
         access.andLoadBoolLabel = self.andLoadBoolLabel
         access.andExitLabel = self.andExitLabel
@@ -76,7 +76,7 @@ class Access():
         return access
 
     def withLogicalLabel(self, op, loadBoolLabel, exitLabel):
-        newVmState = self.__cloneAccess()
+        newVmState = self.cloneAccess()
         if op == 'and':
             newVmState.andExitLabel = exitLabel
             newVmState.andLoadBoolLabel = loadBoolLabel
@@ -90,13 +90,13 @@ class Access():
         return newVmState
 
     def withIfLabel(self, ifTrueLabel, ifFalseLabel):
-        newVmState = self.__cloneAccess()
+        newVmState = self.cloneAccess()
         newVmState.ifTrueLabel = ifTrueLabel
         newVmState.ifFalseLabel = ifFalseLabel
         return newVmState
 
     def withRequireBoolResult(self):
-        newVmState = self.__cloneAccess()
+        newVmState = self.cloneAccess()
         newVmState.requireBoolResult = True
         return newVmState
 
@@ -479,15 +479,18 @@ class CodeGenVisitor(BaseVisitor):
         if ast.varInit is not None:
             # generate code for variable initialization
             exprCode, exprType = ast.varInit.accept(self, vmState.withRequireBoolResult())
-            assert type(varType) is type(exprType)
-            if vmState.frame.name == "<clinit>":
-                # global variable
-                writeVarGen = self.emitter.emitPUTSTATIC(self.convertName(varName), varType, vmState.frame)
-                self.globalVarGen.append(exprCode + writeVarGen)
-            else:
-                # local variable
-                writeVarGen = self.emitter.emitWRITEVAR(varName, varType, varSym.value.value, vmState.frame)
-                self.emitter.printout(exprCode + writeVarGen)
+        else:
+            exprCode, exprType = self.emitter.emitVARINIT(ast.varType, vmState.frame), ast.varType
+
+        assert type(varType) is type(exprType)
+        if vmState.frame.name == "<clinit>":
+            # global variable
+            writeVarGen = self.emitter.emitPUTSTATIC(self.convertName(varName), varType, vmState.frame)
+            self.globalVarGen.append(exprCode + writeVarGen)
+        else:
+            # local variable
+            writeVarGen = self.emitter.emitWRITEVAR(varName, varType, varSym.value.value, vmState.frame)
+            self.emitter.printout(exprCode + writeVarGen)
     
         vmState.sym.append(varSym)
         return vmState
@@ -619,26 +622,47 @@ class CodeGenVisitor(BaseVisitor):
 
         codeGen = []
 
+        vmState.frame.push() # for array reference
+        vmState.frame.push() # for cloned array reference
+        vmState.frame.push() # for index
+
         exprGen, eleType = ast.value[0].accept(self, vmState)
 
-        arrGen = self.emitter.emitARRAY(eleType, vmState.frame)
+        # reset the stack to its initial state before the expression is calculated.
+        # pop two array references, index and result
+        vmState.frame.pop()
+        vmState.frame.pop()
+        vmState.frame.pop()
+        vmState.frame.pop()
+
+        # resolve array literal's type
+        if type(eleType) is not ArrayType:
+            arrType = ArrayType([len(ast.value)], eleType)
+        else:
+            arrType = ArrayType([len(ast.value)] + eleType.size, eleType.eleType)
+
+        # create the array
+        arrGen = self.emitter.emitNEWARRAY(arrType, vmState.frame)
         codeGen.append(arrGen)
 
-        # load the result of the first expression into the array
+        # visit the first item to get the array's element type
+        # to load an item into the array, use astore instructions.
+        # astore's arguments: ..., arrref, index, value
         codeGen.append(self.emitter.emitDUP(vmState.frame))
+        codeGen.append(self.emitter.emitPUSHICONST(0, vmState.frame))
         codeGen.append(exprGen)
-        codeGen.append(self.emitter.emitLOADARRITEM(eleType=eleType, idx=0, frame=vmState.frame))
+        vmState.frame.push()
+        codeGen.append(self.emitter.emitASTORE(eleType, vmState.frame))
 
-        for i, expr in enumerate(ast.value, 1):
-            # load the result of the ith expression into the array
-            exprGen, exprType = expr.accept(self, vmState)
+        for i, expr in enumerate(ast.value[1:], 1):
+            # generate code for loading the result of the ith expression into the array
+
             codeGen.append(self.emitter.emitDUP(vmState.frame))
+            exprGen, exprType = expr.accept(self, vmState)
+            codeGen.append(self.emitter.emitPUSHICONST(i, vmState.frame))
             codeGen.append(exprGen)
-            codeGen.append(self.emitter.emitLOADARRITEM(eleType=eleType, idx=i, frame=vmState.frame))
-        if type(eleType) is ArrayType:
-            arrType = ArrayType(eleType=eleType.eleType, size=[float(len(ast.value))] + eleType.size)
-        else:
-            arrType = ArrayType(eleType=eleType, size=[float(len(ast.value))])
+            codeGen.append(self.emitter.emitASTORE(eleType, vmState.frame))
+
         return ''.join(codeGen), arrType
 
     def visitId(self, ast: Id, vmState: Access):
