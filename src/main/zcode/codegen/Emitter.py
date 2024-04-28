@@ -106,6 +106,8 @@ class Emitter():
         frame.pop()
         if type(in_) is NumberType:
             return self.jvm.emitFALOAD()
+        elif type(in_) is BoolType:
+            return self.jvm.emitBALOAD()
         elif type(in_) in [StringType, ArrayType]:
             return self.jvm.emitAALOAD()
         else:
@@ -159,7 +161,7 @@ class Emitter():
             return self.jvm.emitFLOAD(index)
         if type(inType) is BoolType:
             return self.jvm.emitILOAD(index)
-        elif type(inType) is StringType:
+        elif type(inType) in [StringType, ArrayType]:
             return self.jvm.emitALOAD(index)
         else:
             raise IllegalOperandException(name)

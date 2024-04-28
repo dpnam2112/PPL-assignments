@@ -594,20 +594,26 @@ class CodeGenVisitor(BaseVisitor):
         return operandCode + operatorCode, operandType
 
     def visitArrayCell(self, ast: ArrayCell, vmState: Access):
-        code = []
-        idxGens = [expr.accept(self, vmState)[0] + self.emitter.emitF2I(vmState) for expr in ast.idx]
-        varGen, varType = ast.arr.accept(self, vmState)
-        assert type(varType) is ArrayType
+        if not vmState.isLeft:
+            code = []
+            # generate code for loading indexes and converting them to integers
+            idxGens = [expr.accept(self, vmState)[0] + self.emitter.emitF2I(vmState) for expr in ast.idx]
+            varGen, varType = ast.arr.accept(self, vmState)
+            assert type(varType) is ArrayType
 
-        code += varGen
+            code += varGen
 
-        # generate code for loading array's item onto the stack
-        for i, idxGen in enumerate(idxGens):
-            eleType = varType if i < len(idxGens) else varType.eleType
-            code.append(idxGen)
-            code.append(self.emitter.emitALOAD(eleType, vmState.frame))
+            # generate code for loading array's item onto the stack
+            for i, idxGen in enumerate(idxGens):
+                # if i < len(idxGens) - 1, generate code for loading an array reference
+                eleType = varType if i < len(idxGens) - 1 else varType.eleType
+                code.append(idxGen)
+                code.append(self.emitter.emitALOAD(eleType, vmState.frame))
 
-        return ''.join(code), varType.eleType
+            return ''.join(code), varType.eleType
+        else:
+            # generate code for assigning a value into array's item
+            pass
     
     def visitCallExpr(self, ast: CallExpr, vmState: Access):
         code = []
