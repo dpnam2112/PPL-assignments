@@ -218,6 +218,7 @@ class TypeInferenceVisitor(BaseVisitor):
         else:
             ast.rhs.accept(self, leftType)
 
+
     def visitNumberLiteral(self, ast: NumberLiteral, param):
         return NumberType()
 
@@ -396,10 +397,25 @@ class CodeGenVisitor(BaseVisitor):
         return vmState
 
     def visitAssign(self, ast: Assign, vmState: Access):
-        rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
-        leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
-        self.emitter.printout(rightGen)
-        self.emitter.printout(leftGen)
+        if type(ast.lhs) is not ArrayCell:
+            rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
+            leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
+            self.emitter.printout(rightGen)
+            self.emitter.printout(leftGen)
+        else:
+            # code for array item assignment has the following form
+            #   1. <code for loading the array reference>
+            #   2. <code for loading the last index>
+            #   3. <generated code for computing the lhs>
+            #   4. astore instruction (iastore, fastore, aastore, .etc)
+            # when lhs is visited, (1) and (2) are generated.
+
+            leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
+            rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
+            self.emitter.printout(leftGen)
+            self.emitter.printout(rightGen)
+            self.emitter.printout(self.emitter.emitASTORE(rightType, vmState.frame))
+
         return vmState
 
     def visitCallStmt(self, ast: CallStmt, vmState: Access):
@@ -430,13 +446,13 @@ class CodeGenVisitor(BaseVisitor):
         return vmState
 
     def visitFor(self, ast: For, vmState: Access):
-        pass
+        raise NotImplementedError
 
     def visitBreak(self, ast: Break, vmState: Access):
-        pass
+        raise NotImplementedError
 
     def visitContinue(self, ast: Continue, vmState: Access):
-        pass
+        raise NotImplementedError
 
     def visitReturn(self, ast: Return, vmState: Access):
         if ast.expr is None:
@@ -480,9 +496,8 @@ class CodeGenVisitor(BaseVisitor):
             # generate code for variable initialization
             exprCode, exprType = ast.varInit.accept(self, vmState.withRequireBoolResult())
         else:
-            exprCode, exprType = self.emitter.emitVARINIT(ast.varType, vmState.frame), ast.varType
+            exprCode, exprType = self.emitter.emitVARINIT(varType, vmState.frame), varType
 
-        assert type(varType) is type(exprType)
         if vmState.frame.name == "<clinit>":
             # global variable
             writeVarGen = self.emitter.emitPUTSTATIC(self.convertName(varName), varType, vmState.frame)
@@ -594,15 +609,15 @@ class CodeGenVisitor(BaseVisitor):
         return operandCode + operatorCode, operandType
 
     def visitArrayCell(self, ast: ArrayCell, vmState: Access):
+        code = []
+        # generate code for loading indexes and converting them to integers
+        varGen, varType = ast.arr.accept(self, Access(vmState.frame, vmState.sym, False))
+        idxGens = [expr.accept(self, vmState)[0] + self.emitter.emitF2I(vmState) for expr in ast.idx]
+        assert type(varType) is ArrayType
+
+        code += varGen
+
         if not vmState.isLeft:
-            code = []
-            # generate code for loading indexes and converting them to integers
-            idxGens = [expr.accept(self, vmState)[0] + self.emitter.emitF2I(vmState) for expr in ast.idx]
-            varGen, varType = ast.arr.accept(self, vmState)
-            assert type(varType) is ArrayType
-
-            code += varGen
-
             # generate code for loading array's item onto the stack
             for i, idxGen in enumerate(idxGens):
                 # if i < len(idxGens) - 1, generate code for loading an array reference
@@ -612,8 +627,13 @@ class CodeGenVisitor(BaseVisitor):
 
             return ''.join(code), varType.eleType
         else:
-            # generate code for assigning a value into array's item
-            pass
+            # generate code for loading the reference to the array where the assigned item is in.
+            for idxGen in idxGens[:-1]:
+                code.append(idxGen)
+                code.append(self.emitter.emitALOAD(varType, vmState.frame))
+            
+            code.append(idxGens[-1])
+            return ''.join(code), ArrayType(varType.size[-1], varType.eleType)
     
     def visitCallExpr(self, ast: CallExpr, vmState: Access):
         code = []

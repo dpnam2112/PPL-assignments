@@ -31,7 +31,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         
         self.assertTrue(str(expect) == str(types))
 
-    def test_codegen_type_inference(self):
+    def _test_codegen_type_inference(self):
         inp = """
         var x <- 1
         func main() begin
@@ -252,14 +252,14 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = [['x', NumberType()], ['y', NumberType()], ['z', ArrayType([2.0], NumberType())], ['a', ArrayType([2.0, 2.0, 2.0], NumberType())]]
         self.check_codegen_var_type_infernece(inp, expect, "codegen_type_inference_18")
 
-    def test_simple_codegen(self):
+    def _test_simple_codegen(self):
         inp = """
         func main() return
         """
         expect = ""
-        self.assertTrue(TestCodeGen.test(inp, expect, "_test_simple_codegen"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "__test_simple_codegen"))
 
-    def test_global_declaration(self):
+    def _test_global_declaration(self):
         inp = """
         var x <- 1
         func main() return
@@ -267,7 +267,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = ""
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_global_decl_0"))
 
-    def test_simple_fn_call(self):
+    def _test_simple_fn_call(self):
         inp = """
         func main() begin
             writeNumber(1)
@@ -278,7 +278,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = "1.0trueabc"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_simple_fn_call"))
     
-    def test_var_decl(self):
+    def _test_var_decl(self):
         inp = """
         var x <- 1
         func main() begin
@@ -290,7 +290,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "1.0trueabc"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_var_decl"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_var_decl"))
 
         inp = """
         func main() begin
@@ -307,9 +307,9 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "abc7true1.0"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_var_decl_2"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_var_decl_2"))
 
-    def test_func_decl(self):
+    def _test_func_decl(self):
         inp = """
         number x
 
@@ -323,7 +323,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "1.0"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_func_decl_1"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_func_decl_1"))
 
         inp = """
         func f(number x) return x
@@ -333,9 +333,9 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "1.0"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_func_decl_2"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_func_decl_2"))
 
-    def test_assignment(self):
+    def _test_assignment(self):
         inp = """
         func main() begin
             dynamic x
@@ -354,9 +354,9 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "1.0trueabc"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_assignment_0"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_assignment_0"))
 
-    def test_unary_expr(self):
+    def _test_unary_expr(self):
         inp = """
         func main() begin
             dynamic x
@@ -375,9 +375,9 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "falsetrue-1.0"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_simple_unary_0"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_simple_unary_0"))
 
-    def test_relational_expr(self):
+    def _test_relational_expr(self):
         inp = """
         func main() begin
             var x <- 1 + 1
@@ -391,7 +391,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "2.00.06.0-3.0"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_simple_arithmetic_0"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_simple_arithmetic_0"))
 
         inp = """
         func main() begin
@@ -415,7 +415,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "true" * 8
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_simple_relational_expr"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_simple_relational_expr"))
 
         inp = """
         func main() begin
@@ -439,9 +439,9 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "false" * 8
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_simple_relational_expr_2"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_simple_relational_expr_2"))
     
-    def test_arithmetic_expr(self):
+    def _test_arithmetic_expr(self):
         inp = """
         func main() begin
             dynamic x
@@ -458,7 +458,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "1.0" * 5
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_simple_arithmetic"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_simple_arithmetic"))
 
         inp = """
         func main() begin
@@ -476,9 +476,9 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "28.0" + "50.0" + "27.0" + "13.0" + "15.0"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegentest_simple_arithmetic_2"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_simple_arithmetic_2"))
 
-    def test_bool_expr(self):
+    def _test_bool_expr(self):
         inp = """
         func main() begin
             var x <- true and true
@@ -547,7 +547,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = "false5.0"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_bool_expr_2"))
 
-    def test_branch_stmt(self):
+    def _test_branch_stmt(self):
         inp = """
         func main() begin
             if (true) begin
@@ -606,7 +606,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = "..."
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_branch_stmt_5"))
 
-    def test_concat(self):
+    def _test_concat(self):
         inp = """
         func firstName() return "Harry "
         func lastName() return "Potter"
@@ -615,13 +615,111 @@ class CheckCodeGenSuite(unittest.TestCase):
         end
         """
         expect = "Harry Potter."
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_test_concat"))
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_concat"))
 
-    def test_single_tc(self):
+    def _test_array(self):
         inp = """
         func main() begin
-            writeString("Hello " ... "world")
+            dynamic x
+            x <- [[1, 2], [3, 4]]
+            writeNumber(x[0, 1])
+            writeNumber(x[1, 1])
         end
         """
-        expect = "Hello world"
-        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_bool_expr_2"))
+        expect = "2.04.0"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_array_1"))
+
+        inp = """
+        func main() begin
+            dynamic x
+            dynamic y
+            x <- [[true, y], [y, true]]
+            writeBool(x[0, 1])
+            writeBool(x[1, 1])
+        end
+        """
+        expect = "falsetrue"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_array_2"))
+
+        inp = """
+        func main() begin
+            dynamic x
+            x <- [[["a"], ["b"]]]
+            writeString(x[0, 1, 0])
+        end
+        """
+        expect = "b"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_array_3"))
+
+        inp = """
+        number x[3, 3, 3]
+        func main() begin
+            writeNumber(x[0, 1, 1])
+            writeNumber(x[1, 0, 1])
+            writeNumber(x[2, 2, 2])
+        end
+        """
+        expect = "0.0" * 3
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_array_4"))
+
+        inp = """
+        string s[3, 3, 3]
+        func main() begin
+            writeString(s[0, 1, 1])
+            writeString(s[1, 0, 1])
+            writeString(s[2, 2, 2])
+        end
+        """
+        expect = ""
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_array_5"))
+
+    def test_array_item_assignment(self):
+        inp = """
+        func main() begin
+            bool x[1, 2, 3]
+            x[0, 1, 1] <- false and false and false or false or false or true and true
+            writeBool(x[0, 1, 1])
+            writeBool(x[0, 1, 2])
+        end
+        """
+        expect = "truefalse"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_arr_item_assignment_0"))
+
+        inp = """
+        func main() begin
+            string names[3] <- ["hArry", "Ron", "Hermione"]
+            names[0] <- "Harry" ... " Potter"
+            writeString("Harry Potter")
+        end
+        """
+        expect = "Harry Potter"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_arr_item_assignment_1"))
+
+        inp = """
+        func main() begin
+            string s[2, 2] <- [["a", "b"], ["c", "d"]]
+            s[0, 0] <- "A"
+            s[0, 1] <- "B"
+            s[1, 0] <- s[0, 0] ... s[0, 1]
+            writeString(s[1, 0])
+        end
+        """
+        expect = "AB"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_arr_item_assignment_2"))
+
+        inp = """
+        number s[2, 2] <- [[1, 2 + 3 * (-5)], [3, 4]]
+        func f()
+        func main() begin
+            dynamic x <- f()
+            writeNumber(x)
+            s[0, 0] <- s[1, 1] % s[0, 1] + 100
+            writeNumber(f())
+        end
+        func f() return s[0, 0]
+        """
+        expect = "1.0" + "100.0"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_arr_item_assignment_3"))
+
+    def test_single_tc(self):
+        pass

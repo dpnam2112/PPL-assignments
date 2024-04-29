@@ -10,6 +10,7 @@ GRAM_FILE := $(PROJ_DIR)/src/main/zcode/parser/ZCode.g4
 RECOGNIZER_SOLUTION_DIR := $(PROJ_DIR)/submit-recognizer
 AST_GEN_SOLUTION_DIR := $(PROJ_DIR)/submit-ast-gen
 CHECKER_SOLUTION_DIR := $(PROJ_DIR)/submit-checker
+CODEGEN_SOLUTION_DIR := $(PROJ_DIR)/submit-codegen
 
 PYTHON := python3
 
@@ -62,5 +63,10 @@ submit-checker:
 	$(PROJ_DIR)/src/test/CheckSuite.py \
 	$(CHECKER_SOLUTION_DIR)
 
-submit-bytecode-gen:
-
+submit-codegen:
+	mkdir -p $(CODEGEN_SOLUTION_DIR)
+	cp $(PROJ_DIR)/src/main/zcode/codegen/CodeGenerator.py \
+	$(PROJ_DIR)/src/main/zcode/codegen/Emitter.py \
+	$(PROJ_DIR)/src/main/zcode/codegen/MachineCode.py \
+	$(PROJ_DIR)/src/test/CodeGenSuite.py \
+	$(CODEGEN_SOLUTION_DIR)

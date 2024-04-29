@@ -519,7 +519,7 @@ class Emitter():
                 code.append(self.emitNEWARRAY(varType.eleType, frame))
             else:
                 code += [ self.emitPUSHICONST(int(dim), frame) for dim in varType.size ]
-                code.append(self.jvm.emitMULTIANEWARRAY(self.getJVMType(varType), len(varType.size)))
+                code.append(self.jvm.emitMULTIANEWARRAY(self.getJVMType(varType), str(len(varType.size))))
             return ''.join(code)
         else:
             raise IllegalOperandException(varType)
