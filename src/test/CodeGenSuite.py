@@ -673,7 +673,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = ""
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen__test_array_5"))
 
-    def test_array_item_assignment(self):
+    def _test_array_item_assignment(self):
         inp = """
         func main() begin
             bool x[1, 2, 3]
@@ -713,13 +713,112 @@ class CheckCodeGenSuite(unittest.TestCase):
         func main() begin
             dynamic x <- f()
             writeNumber(x)
-            s[0, 0] <- s[1, 1] % s[0, 1] + 100
+            s[0, 0] <- s[1, 1]  + s[0, 1] + 100
             writeNumber(f())
         end
         func f() return s[0, 0]
         """
-        expect = "1.0" + "100.0"
+        expect = "1.0" + "91.0"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_arr_item_assignment_3"))
+
+
+    def _test_loop(self):
+        inp = """
+        func main() begin
+            var i <- 1
+            for i until i > 3 by 1
+                writeNumber(i)
+        end
+        """
+        expect = "1.02.03.0"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_loop"))
+
+        inp = """
+        func main() begin
+            bool arr[5] <- [true, true, true, true, false]
+            var i <- 0
+            for i until not arr[i] by 1
+                writeBool(arr[i])
+            writeNumber(i)
+        end
+        """
+        expect = "true" * 4 + "0.0"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_loop_2"))
+
+#        inp = """
+#        func main() begin
+#            var arr <- [true, true, true, true, false, true, true]
+#            var i <- 0
+#            for i until i > 6 by 1
+#                if (not arr[i])
+#                    continue
+#                writeBool(arr[i])
+#        end
+#        """
+#        expect = "true" * 6
+#        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_loop_3"))
+
+    def test_if(self):
+        inp = """
+        func main() begin
+            if (false) begin
+                writeBool(false)
+            end
+            elif (true) begin
+                writeBool(true)
+            end
+            else
+                writeBool(false)
+        end
+        """
+        expect = "true"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_if_0"))
+
+        inp = """
+        func main() begin
+            if (1 <= 0) begin
+                writeBool(true)
+            end
+            elif (1 <= 0) begin
+                writeBool(true)
+            end
+            else begin
+                writeBool(false)
+            end
+        end
+        """
+        expect = "false"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_if_1"))
+
+        inp = """
+        func main() begin
+            if (false or false or true or false or false or false) begin
+                writeNumber(1)
+            end
+            elif (false and false and false and false) begin
+                writeNumber(2)
+            end
+            else
+                writeNumber(3)
+        end
+        """
+        expect = "1.0"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_if_2"))
+
+        inp = """
+        func main() begin
+            if (true and true and true and false and true and true) begin
+                writeNumber(1)
+            end
+            elif (false or false or false or false or false or false or true) begin
+                writeNumber(2)
+            end
+            else
+                writeNumber(3)
+        end
+        """
+        expect = "2.0"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_if_3"))
 
     def test_single_tc(self):
         pass

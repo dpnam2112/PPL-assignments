@@ -218,7 +218,6 @@ class TypeInferenceVisitor(BaseVisitor):
         else:
             ast.rhs.accept(self, leftType)
 
-
     def visitNumberLiteral(self, ast: NumberLiteral, param):
         return NumberType()
 
@@ -399,8 +398,8 @@ class CodeGenVisitor(BaseVisitor):
     def visitAssign(self, ast: Assign, vmState: Access):
         if type(ast.lhs) is not ArrayCell:
             rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
-            leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
             self.emitter.printout(rightGen)
+            leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
             self.emitter.printout(leftGen)
         else:
             # code for array item assignment has the following form
@@ -411,8 +410,8 @@ class CodeGenVisitor(BaseVisitor):
             # when lhs is visited, (1) and (2) are generated.
 
             leftGen, leftType = ast.lhs.accept(self, Access(vmState.frame, vmState.sym, True))
-            rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
             self.emitter.printout(leftGen)
+            rightGen, rightType = ast.rhs.accept(self, Access(vmState.frame, vmState.sym, False).withRequireBoolResult())
             self.emitter.printout(rightGen)
             self.emitter.printout(self.emitter.emitASTORE(rightType, vmState.frame))
 
@@ -429,30 +428,84 @@ class CodeGenVisitor(BaseVisitor):
 
     def visitIf(self, ast: If, vmState: Access):
         ifParts = [(ast.expr, ast.thenStmt)] + ast.elifStmt
+        exitLabelId = vmState.frame.getNewLabel()
 
         for expr, stmt in ifParts:
             ifTrueLabelId, ifFalseLabelId = vmState.frame.getNewLabel(), vmState.frame.getNewLabel()
             _vmState = vmState.withIfLabel(ifTrueLabelId, ifFalseLabelId)
+
             exprGen, _ = expr.accept(self, _vmState)
             self.emitter.printout(exprGen)
             self.emitter.printout(self.emitter.emitIFFALSE(ifFalseLabelId, vmState.frame))
+
             self.emitter.printout(self.emitter.emitLABEL(ifTrueLabelId, vmState.frame))
-            stmt.accept(self, vmState)
+
+            vmState = stmt.accept(self, vmState)
+            self.emitter.printout(self.emitter.emitGOTO(exitLabelId, vmState.frame))
+
             self.emitter.printout(self.emitter.emitLABEL(ifFalseLabelId, vmState.frame))
 
+
         if ast.elseStmt is not None:
-            ast.elseStmt.accept(self, vmState)
+            vmState = ast.elseStmt.accept(self, vmState)
+        self.emitter.printout(self.emitter.emitLABEL(exitLabelId, vmState.frame))
 
         return vmState
 
     def visitFor(self, ast: For, vmState: Access):
-        raise NotImplementedError
+        vmState.frame.enterScope(False)
+
+        startLabel, endLabel = vmState.frame.getStartLabel(), vmState.frame.getEndLabel()
+
+        # new scope for the whole loop
+        varCountBefore = len(vmState.sym)
+        self.emitter.printout(self.emitter.emitLABEL(startLabel, vmState.frame))
+
+        # initialize numerical iterator (number i <- i)
+        itDecl = VarDecl(ast.name, NumberType(), None, ast.name)
+        self.typeArr.insert(0, [ast.name.name, NumberType()])
+        vmState = itDecl.accept(self, vmState)
+
+        vmState.frame.enterLoop()
+        
+        # put a label at condition expression
+        conditionLabel = vmState.frame.getNewLabel()
+        self.emitter.printout(self.emitter.emitLABEL(conditionLabel, vmState.frame))
+        
+        # generate code for condition expression
+        condGen, condType = ast.condExpr.accept(self, vmState)
+        self.emitter.printout(condGen)
+
+        # jump to break label if the condition's value is false
+        self.emitter.printout(self.emitter.emitIFTRUE(vmState.frame.getBreakLabel(), vmState.frame))
+
+        ast.body.accept(self, vmState)
+        
+        # put continue label at update statement
+        self.emitter.printout(self.emitter.emitLABEL(vmState.frame.getContinueLabel(), vmState.frame))
+
+        # emit update statement
+        assign = Assign(ast.name, BinaryOp('+', ast.name, ast.updExpr))
+        vmState = assign.accept(self, vmState)
+
+        # jump to condition expression after update expression is evaluated
+        self.emitter.printout(self.emitter.emitGOTO(conditionLabel, vmState.frame))
+
+        # put break label
+        self.emitter.printout(self.emitter.emitLABEL(vmState.frame.getBreakLabel(), vmState.frame))
+        self.emitter.printout(self.emitter.emitLABEL(endLabel, vmState.frame))
+
+        vmState.frame.exitLoop()
+
+        vmState.frame.exitScope()
+        vmState.sym = vmState.sym[:varCountBefore]
+        return vmState
 
     def visitBreak(self, ast: Break, vmState: Access):
-        raise NotImplementedError
+        self.emitter.printout(self.emitter.emitGOTO(vmState.frame.getBreakLabel(), vmState.frame))
 
     def visitContinue(self, ast: Continue, vmState: Access):
-        raise NotImplementedError
+        self.emitter.printout(self.emitter.emitGOTO(vmState.frame.getContinueLabel(), vmState.frame))
 
     def visitReturn(self, ast: Return, vmState: Access):
         if ast.expr is None:
@@ -531,25 +584,25 @@ class CodeGenVisitor(BaseVisitor):
                 raise ValueError(ast.op)
 
             return (leftOperandGen + rightOperandGen + opGen), getResultType(ast.op)
-        elif ast.op in ['and', 'or'] and not vmState.requireBoolResult:
-            # if the expression's result is not required, e.g, conditional expressions,
-            # then just check the result of the operands and perform the jump.
-            trueLabel, falseLabel = vmState.ifTrueLabel, vmState.ifFalseLabel
-
-            # create new Access object, with some additional metadata
-            # the result of each operand are required.
-            _vmState = vmState.withRequireBoolResult().withLogicalLabel(ast.op, trueLabel, falseLabel)
-
-            leftGen, leftType = ast.left.accept(self, _vmState)
-            rightGen, rightType = ast.right.accept(self, _vmState)
-
-            if ast.op == 'and':
-                jmpIfFalse = self.emitter.emitIFFALSE(falseLabel, vmState.frame)
-                codegen = [leftGen, jmpIfFalse, rightGen]
-            else:
-                jmpIfTrue = self.emitter.emitIFTRUE(trueLabel, vmState.frame)
-                codegen = [leftGen, jmpIfTrue, rightGen]
-            return ''.join(codegen), BoolType()
+#        elif ast.op in ['and', 'or'] and not vmState.requireBoolResult:
+#            # if the expression's result is not required, e.g, conditional expressions,
+#            # then just check the result of the operands and perform the jump.
+#            trueLabel, falseLabel = vmState.ifTrueLabel, vmState.ifFalseLabel
+#
+#            # create new Access object, with some additional metadata
+#            # the result of each operand are required.
+#            _vmState = vmState.withRequireBoolResult().withLogicalLabel(ast.op, trueLabel, falseLabel)
+#
+#            leftGen, leftType = ast.left.accept(self, _vmState)
+#            rightGen, rightType = ast.right.accept(self, _vmState)
+#
+#            if ast.op == 'and':
+#                jmpIfFalse = self.emitter.emitIFFALSE(falseLabel, vmState.frame)
+#                codegen = [leftGen, jmpIfFalse, rightGen]
+#            else:
+#                jmpIfTrue = self.emitter.emitIFTRUE(trueLabel, vmState.frame)
+#                codegen = [leftGen, jmpIfTrue, rightGen]
+#            return ''.join(codegen), BoolType()
         elif ast.op == 'and' or ast.op == 'or':
             # TODO: Implement code generation in the case that the result is required
             loadBoolLabelId, exitLabelId = None, None
@@ -684,8 +737,8 @@ class CodeGenVisitor(BaseVisitor):
             # generate code for loading the result of the ith expression into the array
 
             codeGen.append(self.emitter.emitDUP(vmState.frame))
-            exprGen, exprType = expr.accept(self, vmState)
             codeGen.append(self.emitter.emitPUSHICONST(i, vmState.frame))
+            exprGen, exprType = expr.accept(self, vmState)
             codeGen.append(exprGen)
             codeGen.append(self.emitter.emitASTORE(eleType, vmState.frame))
 
