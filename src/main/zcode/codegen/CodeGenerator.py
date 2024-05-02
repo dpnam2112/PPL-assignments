@@ -64,6 +64,8 @@ class Access():
 
         self.requireBoolResult = None
 
+        self.isParam = False
+
     def cloneAccess(self):
         access = Access(self.frame, self.sym, self.isLeft, self.isFirst)
         access.andLoadBoolLabel = self.andLoadBoolLabel
@@ -88,6 +90,11 @@ class Access():
             newVmState.andLoadBoolLabel = None
             newVmState.andExitLabel = None
         return newVmState
+
+    def withIsParam(self, isParam):
+        newAccess = self.cloneAccess()
+        newAccess.isParam = isParam
+        return newAccess
 
     def withIfLabel(self, ifTrueLabel, ifFalseLabel):
         newVmState = self.cloneAccess()
@@ -166,7 +173,10 @@ class TypeInferenceVisitor(BaseVisitor):
             for paramDecl in ast.param:
                 paramDecl.accept(self, None)
             ast.body.accept(self, param)
+            if self.funcType[self.currentFuncName].rettype is None:
+                self.funcType[self.currentFuncName].rettype = VoidType()
         self.currentFuncName = None
+
 
     def visitBlock(self, ast: Block, vmState: Access):
         self.beginScope()
@@ -206,9 +216,16 @@ class TypeInferenceVisitor(BaseVisitor):
     
     def visitFor(self, ast: For, param):
         ast.name.accept(self, NumberType())
+        self.beginScope()
+
+        itDecl = VarDecl(ast.name, NumberType(), None, ast.name)
+        itDecl.accept(self, param)
+
         ast.condExpr.accept(self, BoolType())
         ast.updExpr.accept(self, NumberType())
         ast.body.accept(self, param)
+
+        self.endScope()
 
     def visitAssign(self, ast: Assign, vmState: Access):
         leftType = ast.lhs.accept(self, vmState)
@@ -369,7 +386,7 @@ class CodeGenVisitor(BaseVisitor):
             fnVmState.frame.getNewIndex()
 
         for paramDecl in ast.param:
-             fnVmState = paramDecl.accept(self, fnVmState)
+             fnVmState = paramDecl.accept(self, fnVmState.withIsParam(True))
 
         # generate code for function's body.
         fnVmState = ast.body.accept(self, fnVmState)
@@ -445,7 +462,6 @@ class CodeGenVisitor(BaseVisitor):
 
             self.emitter.printout(self.emitter.emitLABEL(ifFalseLabelId, vmState.frame))
 
-
         if ast.elseStmt is not None:
             vmState = ast.elseStmt.accept(self, vmState)
         self.emitter.printout(self.emitter.emitLABEL(exitLabelId, vmState.frame))
@@ -463,7 +479,6 @@ class CodeGenVisitor(BaseVisitor):
 
         # initialize numerical iterator (number i <- i)
         itDecl = VarDecl(ast.name, NumberType(), None, ast.name)
-        self.typeArr.insert(0, [ast.name.name, NumberType()])
         vmState = itDecl.accept(self, vmState)
 
         vmState.frame.enterLoop()
@@ -479,7 +494,7 @@ class CodeGenVisitor(BaseVisitor):
         # jump to break label if the condition's value is false
         self.emitter.printout(self.emitter.emitIFTRUE(vmState.frame.getBreakLabel(), vmState.frame))
 
-        ast.body.accept(self, vmState)
+        vmState = ast.body.accept(self, vmState)
         
         # put continue label at update statement
         self.emitter.printout(self.emitter.emitLABEL(vmState.frame.getContinueLabel(), vmState.frame))
@@ -503,9 +518,11 @@ class CodeGenVisitor(BaseVisitor):
 
     def visitBreak(self, ast: Break, vmState: Access):
         self.emitter.printout(self.emitter.emitGOTO(vmState.frame.getBreakLabel(), vmState.frame))
+        return vmState
 
     def visitContinue(self, ast: Continue, vmState: Access):
         self.emitter.printout(self.emitter.emitGOTO(vmState.frame.getContinueLabel(), vmState.frame))
+        return vmState
 
     def visitReturn(self, ast: Return, vmState: Access):
         if ast.expr is None:
@@ -527,7 +544,8 @@ class CodeGenVisitor(BaseVisitor):
 
         # a tuple: (variable name, variable type)
         varTypePair = self.getVarTypePair()
-        assert varTypePair is not None and varTypePair[0] == iden.name
+        assert varTypePair is not None
+        assert varTypePair[0] == iden.name
         varName, varType = varTypePair
 
         # generate directive and create symbol
@@ -545,20 +563,22 @@ class CodeGenVisitor(BaseVisitor):
             varSym = Symbol(name=varName, mtype=varType, value=Index(newSlot))
             self.emitter.printout(directive)
 
-        if ast.varInit is not None:
-            # generate code for variable initialization
-            exprCode, exprType = ast.varInit.accept(self, vmState.withRequireBoolResult())
-        else:
-            exprCode, exprType = self.emitter.emitVARINIT(varType, vmState.frame), varType
+        if ast.varInit is not None or not vmState.isParam:
+            # generate code for variable initialization, if the variable declaration is not a
+            # parameter declaration
+            if ast.varInit is not None:
+                exprCode, exprType = ast.varInit.accept(self, vmState.withRequireBoolResult())
+            else:
+                exprCode, exprType = self.emitter.emitVARINIT(varType, vmState.frame), varType
 
-        if vmState.frame.name == "<clinit>":
-            # global variable
-            writeVarGen = self.emitter.emitPUTSTATIC(self.convertName(varName), varType, vmState.frame)
-            self.globalVarGen.append(exprCode + writeVarGen)
-        else:
-            # local variable
-            writeVarGen = self.emitter.emitWRITEVAR(varName, varType, varSym.value.value, vmState.frame)
-            self.emitter.printout(exprCode + writeVarGen)
+            if vmState.frame.name == "<clinit>":
+                # global variable
+                writeVarGen = self.emitter.emitPUTSTATIC(self.convertName(varName), varType, vmState.frame)
+                self.globalVarGen.append(exprCode + writeVarGen)
+            else:
+                # local variable
+                writeVarGen = self.emitter.emitWRITEVAR(varName, varType, varSym.value.value, vmState.frame)
+                self.emitter.printout(exprCode + writeVarGen)
     
         vmState.sym.append(varSym)
         return vmState
@@ -608,12 +628,12 @@ class CodeGenVisitor(BaseVisitor):
             loadBoolLabelId, exitLabelId = None, None
 
             if ast.op == 'and':
-                if not (vmState.andLoadBoolLabel and vmState.andExitLabel):
+                if vmState.andLoadBoolLabel is None and vmState.andExitLabel is None:
                     loadBoolLabelId, exitLabelId = vmState.frame.getNewLabel(), vmState.frame.getNewLabel()
                 else:
                     loadBoolLabelId, exitLabelId = vmState.andLoadBoolLabel, vmState.andExitLabel
             else:
-                if not (vmState.orLoadBoolLabel or vmState.orExitLabel):
+                if vmState.orLoadBoolLabel is None or vmState.orExitLabel is None:
                     loadBoolLabelId, exitLabelId = vmState.frame.getNewLabel(), vmState.frame.getNewLabel()
                 else:
                     loadBoolLabelId, exitLabelId = vmState.orLoadBoolLabel, vmState.orExitLabel
@@ -621,6 +641,7 @@ class CodeGenVisitor(BaseVisitor):
             # create new Access object, with some additional metadata
             # the result of each operand are required.
             _vmState = vmState.withLogicalLabel(ast.op, loadBoolLabelId, exitLabelId).withRequireBoolResult()
+
 
             # generate code for operands
             # the result of lhs is always loaded onto the stack
@@ -665,27 +686,29 @@ class CodeGenVisitor(BaseVisitor):
         code = []
         # generate code for loading indexes and converting them to integers
         varGen, varType = ast.arr.accept(self, Access(vmState.frame, vmState.sym, False))
-        idxGens = [expr.accept(self, vmState)[0] + self.emitter.emitF2I(vmState) for expr in ast.idx]
+        
+        genIdx = lambda expr: expr.accept(self, Access(vmState.frame, vmState.sym, False))[0] + self.emitter.emitF2I(vmState)
+
         assert type(varType) is ArrayType
 
         code += varGen
 
         if not vmState.isLeft:
             # generate code for loading array's item onto the stack
-            for i, idxGen in enumerate(idxGens):
+            for i, idxExpr in enumerate(ast.idx):
                 # if i < len(idxGens) - 1, generate code for loading an array reference
-                eleType = varType if i < len(idxGens) - 1 else varType.eleType
-                code.append(idxGen)
+                eleType = varType if i < len(ast.idx) - 1 else varType.eleType
+                code.append(genIdx(idxExpr))
                 code.append(self.emitter.emitALOAD(eleType, vmState.frame))
 
             return ''.join(code), varType.eleType
         else:
             # generate code for loading the reference to the array where the assigned item is in.
-            for idxGen in idxGens[:-1]:
-                code.append(idxGen)
+            for idxExpr in ast.idx[:-1]:
+                code.append(genIdx(idxExpr))
                 code.append(self.emitter.emitALOAD(varType, vmState.frame))
-            
-            code.append(idxGens[-1])
+
+            code.append(genIdx(ast.idx[-1]))
             return ''.join(code), ArrayType(varType.size[-1], varType.eleType)
     
     def visitCallExpr(self, ast: CallExpr, vmState: Access):
