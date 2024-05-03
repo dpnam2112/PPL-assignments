@@ -512,11 +512,12 @@ class Emitter():
             return self.emitPUSHCONST("false", varType, frame)
         elif type(varType) is StringType:
             return self.emitPUSHCONST("", varType, frame)
+        elif type(varType) is ArrayType and type(varType.eleType) is StringType:
+            return self.emitEMPTYSTRINGARR(varType, frame)
         elif type(varType) is ArrayType:
             code = []
             if len(varType.size) == 1:
-                code.append(self.emitPUSHICONST(int(varType.size[0]), frame))
-                code.append(self.emitNEWARRAY(varType.eleType, frame))
+                code.append(self.emitNEWARRAY(varType, frame))
             else:
                 code += [ self.emitPUSHICONST(int(dim), frame) for dim in varType.size ]
                 code.append(self.jvm.emitMULTIANEWARRAY(self.getJVMType(varType), str(len(varType.size))))
@@ -547,6 +548,27 @@ class Emitter():
         frame.push()
 
         return ''.join(result)
+
+    def emitEMPTYSTRINGARR(self, arr_type: ArrayType, frame):
+        # stack: ... -> <arr-ref>
+        code = []
+        code.append(self.emitNEWARRAY(arr_type, frame))
+
+        ele_type = StringType() if len(arr_type.size) == 1 else ArrayType(arr_type.size[1:], StringType()) 
+
+        # store empty strings into the array
+        for idx in range(int(arr_type.size[0])):
+            code.append(self.emitDUP(frame))
+            code.append(self.emitPUSHICONST(int(idx), frame))
+
+            if type(ele_type) is StringType:
+                code.append(self.emitPUSHCONST("", ele_type, frame))
+            else:
+                code.append(self.emitEMPTYSTRINGARR(ele_type, frame))
+
+            code.append(self.emitASTORE(ele_type, frame))
+
+        return ''.join(code)
 
     '''   generate the method directive for a function.
     *   @param lexeme the qualified name of the method(i.e., class-name/method-name).
