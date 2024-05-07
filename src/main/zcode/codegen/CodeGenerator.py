@@ -4,6 +4,7 @@ from Frame import Frame
 from abc import ABC
 from Visitor import *
 from AST import *
+import re
 
 def getOperandType(op):
     if op in ['+', '-', '*', '/', '%', '>', '<', '>=', '<=', '=', '!=']:
@@ -793,7 +794,34 @@ class CodeGenVisitor(BaseVisitor):
         return self.emitter.emitPUSHICONST(1 if ast.value else 0, vmState.frame), BoolType()
 
     def visitStringLiteral(self, ast: StringLiteral, vmState: Access):
-        return self.emitter.emitPUSHCONST(ast.value, StringType(), vmState.frame), StringType()
+        chars = []
+
+        try:
+            i = 0
+            while True:
+                c = ast.value[i]
+                next_c = ast.value[i + 1] if i + 1 != len(ast.value) else ''
+                
+                if c == "\\":
+                    if next_c == "'":
+                        chars.append(next_c)
+                    else:
+                        chars.append(c + next_c)
+                    i += 2
+                elif c == "'":
+                    i += 1
+                    if next_c == '"':
+                        chars.append("\\" + next_c)
+                        i += 1
+                    else:
+                        chars.append(c)
+                else:
+                    chars.append(c)
+                    i += 1
+        except IndexError:
+            pass
+
+        return self.emitter.emitPUSHCONST(''.join(chars), StringType(), vmState.frame), StringType()
 
 class CodeGenerator:
     def __init__(self):
