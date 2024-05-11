@@ -1133,6 +1133,19 @@ class CheckCodeGenSuite(unittest.TestCase):
         expect = "Harry"
         self.assertTrue(TestCodeGen.test(inp, expect, "codegen_string_arr_init_1"))
 
+    def test_string_comparison(self):
+        inp = """
+        func main() begin
+            var s <- "abc"
+            var g <- "abc"
+            writeBool(s == g)
+            writeBool((s ... "a") == (g ... "a"))
+            writeBool(("abc" ... "abc") == ("abc" ... "abcd"))
+        end
+        """
+        expect = "true" * 2 + "false"
+        self.assertTrue(TestCodeGen.test(inp, expect, "codegen_string_comparison"))
+
     def test_scientific_notation(self):
         inp = """
         func main() begin

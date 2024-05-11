@@ -20,6 +20,8 @@ class Emitter():
             return "F"
         elif typeIn is StringType:
             return "Ljava/lang/String;"
+        elif typeIn is cgen.ObjectType:
+            return "Ljava/lang/Object;"
         elif typeIn is VoidType:
             return "V"
         elif typeIn is ArrayType:

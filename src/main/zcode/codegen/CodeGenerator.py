@@ -28,6 +28,13 @@ class MType:
     def __str__(self):
         return str((self.partype, self.rettype))
 
+class ObjectType:
+    def __init__(self):
+        pass
+
+    def __str__(self):
+        return "ObjectType"
+
 class Symbol:
     def __init__(self, name, mtype, value=None):
         self.name = name
@@ -595,8 +602,12 @@ class CodeGenVisitor(BaseVisitor):
                 opGen = self.emitter.emitMULOP(ast.op, leftType, vmState.frame)
             elif ast.op == '%':
                 opGen = self.emitter.emitMOD(ast.op, vmState.frame)
-            elif ast.op in ['>', '<', '=', '<=', '>=', '==', '=', '!=']:
+            elif ast.op in ['>', '<', '=', '<=', '>=', '=', '!=']:
                 opGen = self.emitter.emitREOP(ast.op, leftType, vmState.frame)
+            elif ast.op == "==":
+                methodName = "java/lang/String/equals"
+                methodType = MType([ObjectType()], BoolType())
+                opGen = self.emitter.emitINVOKEVIRTUAL(methodName, methodType, vmState.frame)
             elif ast.op == '...':
                 concatMethodName = "java/lang/String/concat"
                 methodType = MType([StringType()], StringType())
