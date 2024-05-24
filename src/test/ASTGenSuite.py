@@ -257,6 +257,28 @@ class ASTGenSuite(unittest.TestCase):
                     arr=Id(name="arr"),
                     idx=[ast_6, ast_6, ast_6, ast_6])
 
+        expr_31 = f"{expr_1} != {expr_6}" 
+        ast_31 = BinaryOp(
+                    op="!=",
+                    left=ast_1,
+                    right=ast_6
+                )
+
+        expr_32 = f"{expr_1} <= {expr_6}"
+        ast_32 = BinaryOp(
+                    op="<=",
+                    left=ast_1,
+                    right=ast_6
+                )
+
+        expr_33 = f"{expr_1} >= {expr_6}"
+        ast_33 = BinaryOp(
+                    op=">=",
+                    left=ast_1,
+                    right=ast_6
+                )
+
+
 
         return [
             (expr_1, ast_1),
@@ -289,6 +311,9 @@ class ASTGenSuite(unittest.TestCase):
             (expr_28, ast_28),
             (expr_29, ast_29),
             (expr_30, ast_30),
+            (expr_31, ast_31),
+            (expr_32, ast_32),
+            (expr_33, ast_33)
         ]
 
     def tc_name_getter(self, prefix: str):
